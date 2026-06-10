@@ -1,8 +1,8 @@
 {
   "name": "gilda-map-builder",
-  "version": "0.9-plus-smart-brush",
+  "version": "0.10-hybrid-dungeon-visuals",
   "private": true,
-  "description": "Static VTT map builder prototype.",
+  "description": "Gilda Map Builder MVP10 hybrid dungeon visuals.",
   "scripts": {
     "build": "node tools/build-app.js",
     "split": "node tools/split-app.js",
