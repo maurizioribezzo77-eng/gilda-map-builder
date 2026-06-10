@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Gilda Map Builder MVP 0.9+</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <button id="btnExitPlay" class="playExit">Esci dalla modalità gioco</button>
+  <header class="topbar">
+    <div class="brand">Gilda Map Builder <span>MVP 0.9+</span></div>
+
+    <div class="menu">
+      <button class="menuBtn">File ▾</button>
+      <div class="menuPanel">
+        <button id="btnNewMap">Nuova mappa</button>
+        <button id="btnSaveLocal">Salva locale</button>
+        <button id="btnLoadLocal">Carica locale</button>
+        <button id="btnExportJson">Esporta JSON</button>
+        <label class="fileBtn">Importa JSON<input id="inputImportJson" type="file" accept=".json,application/json"></label>
+        <label class="fileBtn">Importa PNG come asset<input id="inputAssetPng" type="file" accept="image/png"></label>
+      </div>
+    </div>
+
+    <div class="menu">
+      <button class="menuBtn">Canvas / VTT ▾</button>
+      <div class="menuPanel wideMenu">
+        <label class="menuLabel">Mappa
+          <select id="mapPreset">
+            <option value="room">Stanza 30×20</option>
+            <option value="small_lair">Tana 50×30</option>
+            <option value="medium_dungeon">Dungeon medio 80×50</option>
+            <option value="large_dungeon">Dungeon grande 120×80</option>
+            <option value="mega_structure">Mega struttura 200×120</option>
+            <option value="custom">Personalizzata</option>
+          </select>
+        </label>
+
+        <div class="menuRow">
+          <label class="menuLabel">Larg. q.<input id="mapSquaresW" class="smallInput" type="number" min="5" max="300" step="1"></label>
+          <label class="menuLabel">Alt. q.<input id="mapSquaresH" class="smallInput" type="number" min="5" max="300" step="1"></label>
+          <button id="btnApplyMapSize">Applica</button>
+        </div>
+
+        <label class="menuLabel">Quadretto
+          <select id="gridSize">
+            <option value="100">100 px default TV</option>
+            <option value="96">96 px</option>
+            <option value="90">90 px</option>
+            <option value="80">80 px</option>
+            <option value="120">120 px</option>
+          </select>
+        </label>
+
+        <div class="menuRow">
+          <button id="btnGrid">Griglia ON/OFF</button>
+          <button id="btnViewport" class="active">Area TV ON</button>
+        </div>
+
+        <div class="menuRow">
+          <button id="btnSnap" class="active">Magnete ON</button>
+          <label class="menuLabel">Aggancio
+            <select id="snapDivisor">
+              <option value="1">1 quadretto</option>
+              <option value="2">1/2 quadretto</option>
+              <option value="4">1/4 quadretto</option>
+            </select>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <span class="sep"></span>
+
+    <button id="btnToggleLeft">Nascondi sinistra</button>
+    <button id="btnToggleRight">Nascondi destra</button>
+
+    <span class="sep"></span>
+
+    <button id="btnEditor" class="active">Editor</button>
+    <button id="btnPlay">Anteprima locale</button>
+    <button id="btnOpenPlayer">Schermo giocatori</button>
+  </header>
+
+  <main class="app">
+    <aside class="sidebar left">
+      <section>
+        <h2>Albero progetto</h2>
+        <div id="projectTree" class="tree"></div>
+      </section>
+
+      <section>
+        <h2>Layer</h2>
+        <p class="hint">M = master, P = giocatori, 🔒 = blocco editing.</p>
+        <div id="layerControls" class="layerControls"></div>
+      </section>
+
+      <section>
+        <h2>Vista giocatori</h2>
+        <p class="hint">
+          Con <b>Segui editor ON</b>, i giocatori vedono esattamente la porzione che stai inquadrando nell’editor:
+          zoomi su una stanza, loro vedono quella stanza adattata allo schermo.
+        </p>
+
+        <button id="btnFollowEditor" class="active">Segui editor ON</button>
+        <button id="btnOpenPlayerSide">Apri schermo giocatori</button>
+        <button id="btnFitMap">Vedi tutta la mappa</button>
+
+        <p class="hint">
+          Il riquadro azzurro resta come riferimento massimo TV. La cornice verde mostra la vista effettiva dei giocatori.
+        </p>
+
+        <button id="btnSetViewportFromView">Centra area TV sulla vista</button>
+        <button id="btnGoViewport">Vai all’area TV</button>
+
+        <label>Zoom area TV fissa: <b id="playerZoomText">100%</b>
+          <input id="playerZoom" type="range" min="50" max="200" step="10" value="100">
+        </label>
+
+        <div class="viewBox">
+          <button id="btnSaveView">Salva vista</button>
+          <div id="savedViews" class="savedViews"></div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Scala VTT</h2>
+        <p class="hint">
+          1 quadretto = 5 piedi / 1,5 m.<br>
+          Default: <b>100 px</b> per quadretto.<br>
+          Il canvas è il dungeon; lo schermo è solo una finestra sulla mappa.
+        </p>
+        <p id="mapInfo" class="hint strong"></p>
+      </section>
+
+      <section>
+        <h2>Scorciatoie</h2>
+        <ul class="hint">
+          <li><b>⌘/Ctrl+C</b> copia</li>
+          <li><b>⌘/Ctrl+V</b> incolla</li>
+          <li><b>Canc</b> elimina</li>
+          <li><b>Q/E</b> ruota -/+ 15°</li>
+          <li><b>Ctrl/Cmd + rotellina</b> zoom</li>
+          <li><b>Shift + click sinistro</b> sposta mappa</li>
+          <li><b>+ / -</b> scala oggetto</li>
+          <li><b>Alt/Option + rotellina</b> scala oggetto</li>
+          <li><b>Frecce</b> sposta oggetto/gruppo a scatti</li>
+          <li><b>Shift/Ctrl/Cmd + click</b> selezione multipla</li>
+          <li><b>Ctrl/Cmd + A</b> seleziona tutto</li>
+          <li><b>G</b> raggruppa selezione</li>
+          <li><b>U</b> scioglie gruppo</li>
+        </ul>
+      </section>
+    </aside>
+
+    <section class="center">
+      <div class="canvasbar">
+        <span id="status">Pronto</span>
+        <span class="zoomBox">Zoom <input id="zoom" type="range" min="10" max="160" value="25"> <b id="zoomText">25%</b></span>
+      </div>
+      <div id="canvasWrap" class="canvasWrap">
+        <div id="canvasStage" class="canvasStage">
+          <div id="canvas" class="canvas gridOn">
+            <div id="dropHint">Trascina qui gli asset</div>
+            <div id="gridLayer" class="gridLayer"></div>
+            <div id="smartLayer" class="smartLayer"></div>
+            <div id="viewportLayer" class="viewportLayer"><span>MAX TV 4K</span><div id="viewportHandle" class="viewportHandle">trascina area TV</div></div>
+            <div id="playerViewLayer" class="playerViewLayer"><span>VISTA PLAYER</span></div>
+            <div id="brushPreview" class="brushPreview"><img id="brushPreviewImg" alt=""><div class="anchorMarker"><span></span></div><div class="anchorLabel">AGGANCIO</div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <aside class="sidebar right">
+      <section>
+        <h2>Pennelli Smart</h2>
+        <label>Tipo pennello
+          <select id="smartBrushKind">
+            <option value="dungeon">Dungeon Brush</option>
+            <option value="wall">Wall Cell Brush</option>
+          </select>
+        </label>
+        <label>Preset
+          <select id="smartBrushPreset">
+            <option value="inhabited">Abitato</option>
+            <option value="abandoned">Abbandonato</option>
+            <option value="ruin">Rovina</option>
+            <option value="rough">Tunnel grezzo</option>
+          </select>
+        </label>
+        <div class="smartTools">
+          <button id="btnSmartWallDraw">Disegna smart</button>
+          <button id="btnSmartWallErase">Cancella smart</button>
+          <button id="btnSmartWallOff">Stop smart</button>
+        </div>
+        <div id="smartWallStatus" class="hint">Smart Brush: spento</div>
+      </section>
+
+      <section>
+        <h2>Tileset ZIP v1</h2>
+        <input id="tilesetZipInput" class="tilesetFileInput" type="file" accept=".zip,application/zip,application/x-zip-compressed">
+        <div id="tilesetStatus" class="hint">Base integrato. Nessun tileset caricato.</div>
+        <div id="tilesetList" class="tilesetList"></div>
+      </section>
+
+      <section>
+        <h2>Libreria asset</h2>
+        <div id="assetLibrary" class="assetLibrary"></div>
+      </section>
+
+      <section>
+        <h2>Proprietà</h2>
+        <div id="brushStatus" class="brushStatus">Pennello: nessun asset selezionato</div>
+      <div id="properties" class="properties">
+          <p class="hint">Seleziona un oggetto sulla mappa.</p>
+        </div>
+      </section>
+    </aside>
+  </main>
+<script src="app.js"></script>
+<script src="tileset_loader.js"></script>
+</body>
+</html>

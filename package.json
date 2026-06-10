@@ -1,0 +1,13 @@
+{
+  "name": "gilda-map-builder",
+  "version": "0.9-plus-smart-brush",
+  "private": true,
+  "description": "Static VTT map builder prototype.",
+  "scripts": {
+    "build": "node tools/build-app.js",
+    "split": "node tools/split-app.js",
+    "check": "node tools/check-js.js",
+    "validate:tileset": "node tools/validate-tileset.js",
+    "serve": "python3 -m http.server 8765"
+  }
+}

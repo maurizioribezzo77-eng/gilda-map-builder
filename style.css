@@ -1,0 +1,1368 @@
+* { box-sizing: border-box; }
+
+:root {
+  --bg:#111;
+  --panel:#1d1d1d;
+  --panel2:#292929;
+  --line:#3f3f3f;
+  --text:#e9dfce;
+  --muted:#a79d8c;
+  --gold:#d1a35a;
+  --gold2:#f0d99a;
+}
+
+body {
+  margin:0;
+  height:100vh;
+  overflow:hidden;
+  background:var(--bg);
+  color:var(--text);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.topbar {
+  height:50px;
+  display:flex;
+  align-items:center;
+  gap:8px;
+  padding:7px 10px;
+  border-bottom:1px solid var(--line);
+  background:#0b0b0b;
+  overflow-x:auto;
+  white-space:nowrap;
+}
+
+.brand {
+  font-weight:800;
+  margin-right:8px;
+}
+.brand span {
+  color:var(--muted);
+  font-size:12px;
+}
+
+button, .fileBtn, select {
+  background:#292929;
+  color:var(--text);
+  border:1px solid #555;
+  border-radius:6px;
+  padding:7px 10px;
+  font-size:13px;
+}
+button, .fileBtn { cursor:pointer; }
+button:hover, .fileBtn:hover, select:hover { border-color:var(--gold); }
+button.active { background:#533915; border-color:var(--gold); }
+.fileBtn input { display:none; }
+.sep {
+  width:1px;
+  height:26px;
+  background:#444;
+  margin:0 2px;
+}
+.topLabel {
+  display:flex;
+  align-items:center;
+  gap:5px;
+  color:var(--muted);
+  font-size:12px;
+}
+
+.app {
+  height:calc(100vh - 50px);
+  display:grid;
+  grid-template-columns:285px minmax(450px, 1fr) 345px;
+  min-height:0;
+}
+
+.sidebar {
+  background:var(--panel);
+  border-right:1px solid var(--line);
+  padding:10px;
+  overflow-y:auto;
+  overflow-x:hidden;
+  min-height:0;
+}
+
+.sidebar.right {
+  border-right:0;
+  border-left:1px solid var(--line);
+}
+
+.sidebar section { margin-bottom:16px; }
+
+h2 {
+  margin:8px 0;
+  font-size:14px;
+  color:var(--gold2);
+  letter-spacing:.02em;
+}
+
+.hint {
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.35;
+}
+.strong {
+  color:#d7c190;
+}
+
+.tree .node {
+  padding:6px 7px;
+  border-radius:6px;
+  font-size:13px;
+}
+.tree .node:hover { background:var(--panel2); }
+.tree .child { margin-left:14px; color:var(--muted); cursor:pointer; }
+.tree .activeMap { background:#3a2b16; color:var(--gold2); }
+
+.layerControls label {
+  display:flex;
+  align-items:center;
+  gap:7px;
+  padding:4px 0;
+  font-size:13px;
+}
+
+.center {
+  display:flex;
+  flex-direction:column;
+  min-width:0;
+  min-height:0;
+}
+
+.canvasbar {
+  height:38px;
+  background:#171717;
+  border-bottom:1px solid var(--line);
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  padding:6px 10px;
+  color:var(--muted);
+  font-size:13px;
+}
+
+.canvasWrap {
+  flex:1;
+  overflow:auto;
+  display:block;
+  padding:26px;
+  background:
+    radial-gradient(circle at center, #30363a 0%, #15181a 72%);
+  min-height:0;
+}
+
+.canvasStage {
+  position:relative;
+  width:3840px;
+  height:2160px;
+  flex:0 0 auto;
+}
+
+.canvas {
+  position:absolute;
+  left:0;
+  top:0;
+  flex:0 0 auto;
+  transform-origin:top left;
+  background:
+    radial-gradient(circle at 24% 18%, rgba(255,255,255,.12), transparent 18%),
+    radial-gradient(circle at 78% 72%, rgba(20,28,30,.12), transparent 25%),
+    linear-gradient(90deg, rgba(34,45,48,.045) 1px, transparent 1px),
+    linear-gradient(0deg, rgba(34,45,48,.04) 1px, transparent 1px),
+    #8f9794;
+  background-size:auto, auto, 96px 96px, 96px 96px, auto;
+  border:1px solid #5f696a;
+  box-shadow:0 18px 50px rgba(0,0,0,.68), inset 0 0 90px rgba(0,0,0,.18);
+  overflow:hidden;
+}
+
+.canvas.gridOn::before { content:none; }
+
+#dropHint {
+  position:absolute;
+  left:50%;
+  top:50%;
+  transform:translate(-50%,-50%);
+  color:rgba(255,255,255,.35);
+  border:1px dashed rgba(255,255,255,.25);
+  border-radius:12px;
+  padding:18px 28px;
+  pointer-events:none;
+}
+
+.assetCategory { margin-bottom:14px; }
+.assetCategory h3 {
+  margin:8px 0 6px;
+  color:var(--gold);
+  font-size:13px;
+}
+.assetGrid {
+  display:grid;
+  grid-template-columns:repeat(3, 1fr);
+  gap:7px;
+}
+.assetTile {
+  min-height:82px;
+  padding:6px;
+  border:1px solid #464646;
+  border-radius:8px;
+  background:#121212;
+  cursor:grab;
+  text-align:center;
+}
+.assetTile:hover { border-color:var(--gold); }
+.assetTile img {
+  width:100%;
+  height:45px;
+  object-fit:fill;
+  display:block;
+  margin-bottom:5px;
+}
+.assetTile span {
+  color:var(--muted);
+  font-size:10px;
+  display:block;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.assetTile .size {
+  color:#d0b473;
+  font-size:9px;
+}
+
+.mapObject {
+  position:absolute;
+  transform-origin:center center;
+  cursor:move;
+  user-select:none;
+}
+.mapObject img {
+  width:100%;
+  height:100%;
+  object-fit:contain;
+  display:block;
+  pointer-events:none;
+}
+.mapObject.selected {
+  outline:2px solid #ffd36f;
+  outline-offset:2px;
+}
+.mapObject.hiddenPlayer::after {
+  content:"M";
+  position:absolute;
+  top:-9px;
+  right:-9px;
+  width:20px;
+  height:20px;
+  border-radius:50%;
+  background:#8a3333;
+  color:white;
+  font-size:12px;
+  line-height:20px;
+  text-align:center;
+  box-shadow:0 1px 5px rgba(0,0,0,.5);
+}
+
+.properties label {
+  display:block;
+  margin:8px 0;
+  color:var(--muted);
+  font-size:12px;
+}
+.properties input, .properties select, .properties textarea {
+  width:100%;
+  margin-top:3px;
+  padding:6px;
+  border:1px solid #555;
+  border-radius:5px;
+  background:#111;
+  color:var(--text);
+}
+.properties input[type="checkbox"] {
+  width:auto;
+  margin-right:6px;
+}
+.row2 {
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+}
+.buttonRow {
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:6px;
+  margin:8px 0;
+}
+.buttonRow button { width:100%; }
+.danger { border-color:#7c3a3a; }
+.small {
+  font-size:11px;
+  color:var(--muted);
+}
+
+
+/* MVP 0.2c: griglia reale, non background CSS.
+   È fatta con linee DOM assolute, quindi non sfarfalla con lo zoom. */
+.gridLayer {
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  z-index:9999;
+}
+
+.smartLayer {
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  z-index:15000;
+}
+
+.smartBrushSvg {
+  position:absolute;
+  inset:0;
+  overflow:visible;
+}
+
+.smartWallFill rect {
+  fill:#777b76;
+}
+
+.smartDungeonFloor rect {
+  fill:#bfc2b7;
+  stroke:rgba(34,45,48,.42);
+  stroke-width:1.1;
+}
+
+.smartBrushDetails circle {
+  fill:rgba(37,35,31,.42);
+}
+
+.smartBrushCracks {
+  opacity:.34;
+}
+
+.smartWallOutline {
+  fill:none;
+  stroke:#20211f;
+  stroke-width:5;
+  stroke-linecap:square;
+  stroke-linejoin:round;
+}
+
+.smartDungeonOutline {
+  fill:none;
+  stroke:#1e201e;
+  stroke-width:4;
+  stroke-linecap:square;
+  stroke-linejoin:round;
+}
+
+.smartDungeonWallShadow {
+  fill:rgba(0,0,0,.30);
+  transform:translate(5px, 7px);
+  opacity:.95;
+}
+
+.smartDungeonWallBand {
+  stroke:#282a27;
+  stroke-width:3;
+  stroke-linejoin:miter;
+}
+
+.smartDungeonWallRubble {
+  opacity:.34;
+}
+
+.smartDungeonWallCracks {
+  opacity:.42;
+}
+
+.smartDungeonRubbleBits circle {
+  fill:rgba(43,40,35,.52);
+  stroke:rgba(255,255,255,.18);
+  stroke-width:1;
+}
+
+.smartPathGroup polygon {
+  stroke-linejoin:miter;
+}
+
+.smartWallPathShadow {
+  fill:rgba(0,0,0,.34);
+  stroke:rgba(0,0,0,.38);
+  stroke-width:8;
+  opacity:.92;
+  transform:translate(5px, 7px);
+}
+
+.smartWallPath {
+  fill:#777b76;
+  stroke:#20211f;
+  stroke-width:4;
+  opacity:1;
+}
+
+.smartWallPath.preview {
+  fill:rgba(120,170,150,.48);
+  stroke:#9ed0b7;
+  opacity:.75;
+}
+
+.smartWallPathRubble,
+.smartWallCellRubble {
+  opacity:.36;
+}
+
+.smartWallPathCracks {
+  opacity:.45;
+}
+
+.smartWallPathInnerLine {
+  fill:none;
+  stroke:rgba(255,255,255,.18);
+  stroke-width:1.5;
+  opacity:.48;
+}
+
+.smartWallPathHighlight {
+  stroke:rgba(0,0,0,.48);
+  opacity:.65;
+}
+.gridLine {
+  position:absolute;
+  pointer-events:none;
+}
+.gridLine.minor {
+  background:rgba(30,43,46,.25);
+}
+.gridLine.major {
+  background:rgba(30,43,46,.38);
+}
+.gridLine.vertical {
+  top:0;
+  height:100%;
+}
+.gridLine.horizontal {
+  left:0;
+  width:100%;
+}
+
+
+/* MVP 0.2e: navigazione canvas */
+.canvasWrap.panning {
+  cursor: grabbing;
+  user-select: none;
+}
+.canvasWrap.panning * {
+  cursor: grabbing !important;
+}
+
+
+/* MVP 0.3: canvas VTT grande + viewport TV */
+.smallInput {
+  width:64px;
+  padding:6px;
+  background:#292929;
+  color:var(--text);
+  border:1px solid #555;
+  border-radius:6px;
+}
+
+.sidebar button {
+  width:100%;
+  margin:4px 0;
+  text-align:left;
+}
+
+.viewBox {
+  margin-top:8px;
+}
+
+.savedViews {
+  margin-top:6px;
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+}
+
+.savedView {
+  display:flex;
+  gap:4px;
+  align-items:center;
+}
+
+.savedView button {
+  margin:0;
+  padding:5px 6px;
+  font-size:12px;
+}
+
+.savedView .go {
+  flex:1;
+}
+
+.savedView .del {
+  width:32px;
+  text-align:center;
+  color:#ffb7a5;
+}
+
+.viewportLayer {
+  position:absolute;
+  left:0;
+  top:0;
+  width:3840px;
+  height:2160px;
+  border:8px solid rgba(80,190,255,.95);
+  outline:3px solid rgba(0,0,0,.65);
+  background:rgba(80,190,255,.06);
+  pointer-events:none;
+  z-index:9998;
+}
+
+.viewportLayer span {
+  position:absolute;
+  left:10px;
+  top:10px;
+  padding:5px 8px;
+  background:rgba(0,0,0,.65);
+  color:#b8e8ff;
+  border:1px solid rgba(80,190,255,.95);
+  border-radius:5px;
+  font-size:18px;
+  font-weight:800;
+  letter-spacing:.04em;
+}
+
+.viewportLayer.hidden {
+  display:none;
+}
+
+
+/* MVP 0.3b: modalità gioco pulita */
+.playExit {
+  display:none;
+  position:fixed;
+  z-index:999999;
+  top:10px;
+  right:10px;
+  width:auto;
+  background:rgba(0,0,0,.65);
+  color:#f0d99a;
+  border:1px solid #d1a35a;
+  border-radius:8px;
+  padding:9px 12px;
+}
+
+body.playMode {
+  overflow:hidden;
+  background:#000;
+}
+
+body.playMode .topbar,
+body.playMode .sidebar,
+body.playMode .canvasbar {
+  display:none !important;
+}
+
+body.playMode .app {
+  display:block;
+  height:100vh;
+}
+
+body.playMode .center {
+  width:100vw;
+  height:100vh;
+  display:block;
+}
+
+body.playMode .canvasWrap {
+  width:100vw;
+  height:100vh;
+  overflow:hidden;
+  padding:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:#000;
+}
+
+body.playMode .canvasStage {
+  position:relative;
+  overflow:hidden;
+  flex:0 0 auto;
+}
+
+body.playMode #gridLayer,
+body.playMode #viewportLayer,
+body.playMode #dropHint {
+  display:none !important;
+}
+
+body.playMode .playExit {
+  display:block;
+}
+
+body.playMode .mapObject.selected {
+  outline:none;
+}
+
+
+/* MVP 0.3c: secondo schermo + area TV trascinabile */
+.viewportLayer {
+  pointer-events:none;
+}
+
+.viewportHandle {
+  position:absolute;
+  left:10px;
+  bottom:10px;
+  padding:6px 10px;
+  background:rgba(0,0,0,.72);
+  color:#b8e8ff;
+  border:1px solid rgba(80,190,255,.95);
+  border-radius:6px;
+  font-size:13px;
+  font-weight:800;
+  letter-spacing:.03em;
+  cursor:move;
+  pointer-events:auto;
+  user-select:none;
+}
+
+.viewportLayer.dragging {
+  border-color:#fff4a3;
+  background:rgba(255,244,163,.10);
+}
+
+body.playerWindow {
+  overflow:hidden;
+  background:#000;
+}
+
+body.playerWindow .topbar,
+body.playerWindow .sidebar,
+body.playerWindow .canvasbar,
+body.playerWindow .playExit {
+  display:none !important;
+}
+
+body.playerWindow .app {
+  display:block;
+  height:100vh;
+}
+
+body.playerWindow .center {
+  width:100vw;
+  height:100vh;
+  display:block;
+}
+
+body.playerWindow .canvasWrap {
+  width:100vw;
+  height:100vh;
+  overflow:hidden;
+  padding:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:#000;
+}
+
+body.playerWindow .canvasStage {
+  position:relative;
+  overflow:hidden;
+  flex:0 0 auto;
+  background:#000;
+}
+
+body.playerWindow .canvas {
+  background:transparent !important;
+  border:0 !important;
+  box-shadow:none !important;
+}
+
+body.playerWindow #gridLayer,
+body.playerWindow #viewportLayer,
+body.playerWindow #dropHint {
+  display:none !important;
+}
+
+body.playerWindow .mapObject {
+  cursor:default;
+}
+
+body.playerWindow .mapObject.selected,
+body.playerWindow .mapObject.hiddenPlayer::after {
+  outline:none !important;
+  display:block;
+}
+
+body.playerWindow .mapObject.hiddenPlayer::after {
+  content:none !important;
+}
+
+/* Anche la modalità gioco locale usa la stessa pulizia visiva */
+body.playMode .canvas {
+  background:transparent !important;
+  border:0 !important;
+  box-shadow:none !important;
+}
+
+
+/* MVP 0.3d: menu a tendina e vista giocatori che segue l'editor */
+.menu {
+  position:relative;
+  display:inline-block;
+}
+
+.menuBtn {
+  min-width:92px;
+}
+
+.menuPanel {
+  display:none;
+  position:absolute;
+  top:calc(100% + 6px);
+  left:0;
+  z-index:200000;
+  min-width:190px;
+  padding:8px;
+  background:#141414;
+  border:1px solid #5a513f;
+  border-radius:10px;
+  box-shadow:0 16px 40px rgba(0,0,0,.55);
+}
+
+.menu:hover .menuPanel,
+.menu:focus-within .menuPanel {
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+
+.wideMenu {
+  min-width:320px;
+}
+
+.menuPanel button,
+.menuPanel .fileBtn,
+.menuPanel select {
+  width:100%;
+  text-align:left;
+}
+
+.menuLabel {
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  color:var(--muted);
+  font-size:12px;
+}
+
+.menuRow {
+  display:flex;
+  gap:6px;
+  align-items:end;
+}
+
+.menuRow > * {
+  flex:1;
+}
+
+.playerViewLayer {
+  position:absolute;
+  left:0;
+  top:0;
+  width:1000px;
+  height:700px;
+  border:6px solid rgba(115,255,150,.95);
+  outline:2px solid rgba(0,0,0,.65);
+  background:rgba(115,255,150,.045);
+  pointer-events:none;
+  z-index:9997;
+}
+
+.playerViewLayer span {
+  position:absolute;
+  left:10px;
+  top:10px;
+  padding:5px 8px;
+  background:rgba(0,0,0,.65);
+  color:#c9ffd5;
+  border:1px solid rgba(115,255,150,.95);
+  border-radius:5px;
+  font-size:16px;
+  font-weight:800;
+  letter-spacing:.04em;
+}
+
+.playerViewLayer.hidden {
+  display:none;
+}
+
+body.playMode #playerViewLayer,
+body.playerWindow #playerViewLayer {
+  display:none !important;
+}
+
+/* la pagina giocatori deve essere nera/pulita: solo asset, niente foglio marrone */
+body.playerWindow .canvasWrap,
+body.playMode .canvasWrap,
+body.playerWindow .canvasStage,
+body.playMode .canvasStage {
+  background:#000 !important;
+}
+
+body.playerWindow .canvas,
+body.playMode .canvas {
+  background:transparent !important;
+  border:0 !important;
+  box-shadow:none !important;
+}
+
+
+/* MVP 0.3e: correzione menu e layer interfaccia */
+.topbar {
+  position:relative;
+  z-index:500000;
+  overflow:visible !important;
+}
+
+.app {
+  position:relative;
+  z-index:1;
+}
+
+.menuPanel {
+  z-index:600000 !important;
+}
+
+.center,
+.sidebar {
+  position:relative;
+  z-index:1;
+}
+
+
+/* MVP 0.3f: colonne laterali richiudibili */
+body.leftCollapsed .app {
+  grid-template-columns:0 minmax(450px, 1fr) 345px;
+}
+
+body.rightCollapsed .app {
+  grid-template-columns:285px minmax(450px, 1fr) 0;
+}
+
+body.leftCollapsed.rightCollapsed .app {
+  grid-template-columns:0 minmax(450px, 1fr) 0;
+}
+
+body.leftCollapsed .sidebar.left,
+body.rightCollapsed .sidebar.right {
+  padding:0 !important;
+  overflow:hidden !important;
+  border:0 !important;
+}
+
+body.leftCollapsed .sidebar.left > *,
+body.rightCollapsed .sidebar.right > * {
+  display:none !important;
+}
+
+/* Liste asset richiudibili per categoria */
+.assetCategory h3 {
+  cursor:pointer;
+  user-select:none;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  padding:6px 8px;
+  border:1px solid #3c352a;
+  border-radius:7px;
+  background:#171717;
+}
+
+.assetCategory h3:hover {
+  border-color:var(--gold);
+}
+
+.assetCategory.collapsed .assetGrid {
+  display:none;
+}
+
+.assetCategory .catArrow {
+  color:var(--muted);
+  font-size:11px;
+}
+
+/* Cornice vista player: deve restare leggibile anche quando coincide con i bordi dell'editor */
+.playerViewLayer {
+  box-shadow:0 0 0 2px rgba(0,0,0,.85), 0 0 12px rgba(115,255,150,.55);
+}
+
+.playerViewLayer.followInset {
+  border-style:dashed;
+}
+
+
+/* MVP 0.3g: pennello asset */
+.assetTile {
+  cursor:pointer;
+}
+
+.assetTile.brushSelected {
+  border-color:#73ff96 !important;
+  box-shadow:0 0 0 2px rgba(115,255,150,.35), 0 0 14px rgba(115,255,150,.25);
+  background:#1d2c20;
+}
+
+.brushStatus {
+  margin-bottom:10px;
+  padding:8px;
+  border:1px solid #5a513f;
+  border-radius:8px;
+  background:#171717;
+  color:#d7cdb8;
+  font-size:12px;
+  line-height:1.35;
+}
+
+.brushStatus.active {
+  border-color:#73ff96;
+  color:#c9ffd5;
+  background:#142018;
+}
+
+.canvas.brushMode {
+  cursor:crosshair;
+}
+
+
+/* MVP 0.3h: oggetti sopra griglia/sfondo + pennello stabile */
+.mapObject {
+  z-index:20000 !important;
+}
+
+#gridLayer {
+  z-index:1000 !important;
+  pointer-events:none !important;
+}
+
+#viewportLayer {
+  z-index:30000 !important;
+}
+
+#playerViewLayer {
+  z-index:30001 !important;
+}
+
+#dropHint {
+  pointer-events:none !important;
+}
+
+.canvas.brushMode {
+  cursor:crosshair !important;
+}
+
+.canvas.brushMode * {
+  cursor:crosshair;
+}
+
+
+/* MVP 0.3i: rotazione oggetti ripristinata */
+.mapObject {
+  transform-origin:center center !important;
+}
+
+.mapObject img {
+  width:100%;
+  height:100%;
+  display:block;
+  pointer-events:none;
+}
+
+
+/* MVP 0.3j: anteprima pennello con punto di aggancio */
+.brushPreview {
+  display:none;
+  position:absolute;
+  pointer-events:none;
+  z-index:50000;
+  opacity:.68;
+  border:2px dashed rgba(115,255,150,.95);
+  outline:2px solid rgba(0,0,0,.85);
+  box-shadow:0 0 14px rgba(115,255,150,.35);
+  transform-origin:top left;
+}
+
+.brushPreview.visible {
+  display:block;
+}
+
+.brushPreview img {
+  width:100%;
+  height:100%;
+  object-fit:fill;
+  display:block;
+  pointer-events:none;
+}
+
+.anchorMarker {
+  position:absolute;
+  left:-7px;
+  top:-7px;
+  width:14px;
+  height:14px;
+  border-radius:50%;
+  background:#ff3d3d;
+  border:2px solid #fff;
+  box-shadow:0 0 0 2px rgba(0,0,0,.9), 0 0 10px rgba(255,61,61,.8);
+}
+
+.anchorMarker::before,
+.anchorMarker::after {
+  content:"";
+  position:absolute;
+  background:#ff3d3d;
+  box-shadow:0 0 0 1px rgba(0,0,0,.75);
+}
+
+.anchorMarker::before {
+  left:50%;
+  top:-15px;
+  width:2px;
+  height:44px;
+  transform:translateX(-50%);
+}
+
+.anchorMarker::after {
+  left:-15px;
+  top:50%;
+  width:44px;
+  height:2px;
+  transform:translateY(-50%);
+}
+
+.anchorLabel {
+  position:absolute;
+  left:10px;
+  top:-28px;
+  padding:3px 6px;
+  background:rgba(0,0,0,.78);
+  color:#ffd1d1;
+  border:1px solid rgba(255,61,61,.95);
+  border-radius:5px;
+  font-size:11px;
+  font-weight:800;
+  letter-spacing:.04em;
+  white-space:nowrap;
+}
+
+body.playMode .brushPreview,
+body.playerWindow .brushPreview {
+  display:none !important;
+}
+
+
+/* MVP 0.4c: selezione multipla */
+.mapObject.selected {
+  outline:2px solid #ffd36f;
+  outline-offset:2px;
+}
+
+.mapObject.multiSelected {
+  outline:2px solid #73ff96;
+  outline-offset:2px;
+  box-shadow:0 0 0 2px rgba(0,0,0,.65), 0 0 12px rgba(115,255,150,.35);
+}
+
+.multiBox {
+  padding:10px;
+  border:1px solid #5a513f;
+  border-radius:8px;
+  background:#151515;
+}
+
+.multiBox h3 {
+  margin:0 0 8px 0;
+  color:#f0d99a;
+}
+
+.multiBox .small {
+  color:#aaa;
+}
+
+
+/* MVP 0.4d: gruppi e trasformazioni di gruppo */
+.mapObject.grouped::before {
+  content:"";
+  position:absolute;
+  right:-7px;
+  top:-7px;
+  width:14px;
+  height:14px;
+  border-radius:50%;
+  background:#77b7ff;
+  border:2px solid #fff;
+  box-shadow:0 0 0 2px rgba(0,0,0,.75);
+  z-index:2;
+  pointer-events:none;
+}
+
+.groupBox {
+  padding:10px;
+  border:1px solid #426f9f;
+  border-radius:8px;
+  background:#111924;
+  margin-bottom:8px;
+}
+
+.groupBox h3 {
+  margin:0 0 8px 0;
+  color:#b8dcff;
+}
+
+.groupBox .small {
+  color:#b8c6d4;
+}
+
+
+/* MVP 0.4e: gruppi come oggetto unico reale */
+.groupProxy {
+  position:absolute;
+  box-sizing:border-box;
+  border:2px solid rgba(119,183,255,.95);
+  background:rgba(119,183,255,.05);
+  outline:2px solid rgba(0,0,0,.65);
+  z-index:26000 !important;
+  pointer-events:auto;
+  transform-origin:center center;
+}
+
+.groupProxy.selected {
+  box-shadow:0 0 0 2px rgba(0,0,0,.75), 0 0 14px rgba(119,183,255,.55);
+}
+
+.groupProxy::before {
+  content:"GRUPPO";
+  position:absolute;
+  left:6px;
+  top:-28px;
+  padding:3px 7px;
+  border-radius:5px;
+  background:rgba(0,0,0,.75);
+  border:1px solid rgba(119,183,255,.95);
+  color:#b8dcff;
+  font-size:11px;
+  font-weight:800;
+  letter-spacing:.04em;
+  pointer-events:none;
+}
+
+body.playMode .groupProxy,
+body.playerWindow .groupProxy {
+  display:none !important;
+}
+
+
+/* MVP 0.5: layer veri */
+.layerControls {
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+
+.layerRow {
+  display:grid;
+  grid-template-columns:1fr auto auto auto;
+  align-items:center;
+  gap:5px;
+  padding:6px;
+  border:1px solid #3f3a31;
+  border-radius:7px;
+  background:#151515;
+}
+
+.layerRow.hiddenMaster {
+  opacity:.45;
+}
+
+.layerRow.locked {
+  border-color:#6c5630;
+  background:#1c1810;
+}
+
+.layerName {
+  font-size:12px;
+  color:#d9c693;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.layerBtn {
+  min-width:30px;
+  height:26px;
+  padding:0 6px;
+  font-size:12px;
+  border-radius:6px;
+  border:1px solid #4a4438;
+  background:#24211c;
+  color:#d8d0bd;
+  cursor:pointer;
+}
+
+.layerBtn.active {
+  background:#3b301a;
+  color:#f5d27a;
+  border-color:#9c7831;
+}
+
+.layerBtn.playerOff {
+  background:#251818;
+  color:#d7a1a1;
+  border-color:#744545;
+}
+
+.layerHint {
+  color:#9a927f;
+  font-size:11px;
+  margin-top:6px;
+}
+
+.layerBadge {
+  display:inline-block;
+  padding:2px 6px;
+  border-radius:5px;
+  background:#24211c;
+  border:1px solid #4a4438;
+  color:#d8c48d;
+  font-size:11px;
+}
+
+.mapObject.layerLocked {
+  filter:saturate(.65) brightness(.82);
+}
+
+.mapObject.layerLocked::after {
+  content:"🔒";
+  position:absolute;
+  left:-9px;
+  bottom:-11px;
+  font-size:14px;
+  text-shadow:0 1px 2px #000;
+  pointer-events:none;
+}
+
+.groupProxy.layerLocked {
+  border-color:rgba(180,140,75,.95);
+}
+
+
+/* MVP 0.5b: niente lucchetti sugli asset */
+.mapObject.layerLocked::after {
+  content:none !important;
+  display:none !important;
+}
+
+body.playMode .mapObject.layerLocked,
+body.playerWindow .mapObject.layerLocked {
+  filter:none !important;
+}
+
+
+/* MVP 0.6: disegno rapido muri/pavimenti */
+.brushPreview.drawing {
+  opacity:.82;
+  border:2px solid rgba(255,215,111,.95);
+  outline:2px solid rgba(0,0,0,.9);
+  box-shadow:0 0 18px rgba(255,215,111,.45);
+}
+
+.brushPreview.drawing .anchorLabel {
+  color:#ffe4a0;
+  border-color:rgba(255,215,111,.95);
+}
+
+.brushPreview.drawing .anchorMarker {
+  background:#ffd36f;
+}
+
+
+/* MVP 0.6d: asset modulari edge-to-edge */
+.assetTile img {
+  image-rendering:auto;
+}
+.mapObject img,
+.brushPreview img {
+  image-rendering:auto;
+}
+
+
+/* MVP 0.7e: tileset loader additivo e stabile */
+.tilesetFileInput {
+  display:block;
+  width:100%;
+  margin-top:6px;
+  font-size:11px;
+  color:#d8d0bd;
+}
+
+.tilesetList {
+  margin-top:8px;
+  display:flex;
+  flex-direction:column;
+  gap:5px;
+}
+
+.tilesetItem {
+  padding:6px;
+  border:1px solid #4a4438;
+  border-radius:7px;
+  background:#151515;
+  font-size:11px;
+  color:#d8d0bd;
+}
+
+.tilesetItem strong {
+  color:#f0d99a;
+}
+
+.tilesetItem small {
+  color:#a89d82;
+}
+
+.validationError {
+  color:#ffb0a7;
+}
+
+.validationOk {
+  color:#b9e6a3;
+}
+
+
+/* MVP 0.7g: asset tileset dentro le categorie esistenti */
+.assetTile .tilesetName {
+  display:block;
+  font-size:10px;
+  color:#a89d82;
+  margin-top:2px;
+}
+
+
+/* MVP 0.7h: tileset fusi nelle categorie base */
+.assetTile .tilesetName {
+  display:block;
+  font-size:10px;
+  color:#a89d82;
+  margin-top:2px;
+}
+
+.tilesetWarning {
+  color:#f0d99a;
+  font-size:11px;
+}
