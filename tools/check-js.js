@@ -6,6 +6,7 @@ const files = [
   "app.js",
   "tileset_loader.js",
   "tools/build-app.js",
+  "tools/check-bundle.js",
   "tools/split-app.js",
   "tools/validate-tileset.js",
   "js/00_config.js",

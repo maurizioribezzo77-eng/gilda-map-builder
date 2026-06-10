@@ -71,6 +71,12 @@ node tools/check-js.js
 Controlla la sintassi JavaScript dei file principali.
 
 ```sh
+node tools/check-bundle.js
+```
+
+Controlla che `app.js` corrisponda ai blocchi in `js/`. Se modifichi `js/`, rigenera `app.js` con `node tools/build-app.js` prima di committare. Non modificare `app.js` direttamente quando deriva dai blocchi sorgente.
+
+```sh
 node tools/validate-tileset.js gilda_mini_premium_01.zip
 ```
 

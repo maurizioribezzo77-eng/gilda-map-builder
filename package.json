@@ -7,6 +7,7 @@
     "build": "node tools/build-app.js",
     "split": "node tools/split-app.js",
     "check": "node tools/check-js.js",
+    "check:bundle": "node tools/check-bundle.js",
     "validate:tileset": "node tools/validate-tileset.js",
     "serve": "python3 -m http.server 8765"
   }
