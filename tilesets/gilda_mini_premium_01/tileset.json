@@ -1,0 +1,73 @@
+{
+  "format": "map-generator-tileset",
+  "version": 1,
+  "id": "gilda_mini_premium_01",
+  "name": "Gilda Mini Premium 01",
+  "author": "Gilda Map Builder",
+  "cellSize": 256,
+  "maxTileCells": 4,
+  "grid": "square",
+  "allowedRotations": [0, 90, 180, 270],
+  "tiles": [
+    {
+      "id": "floor_stone_premium_01",
+      "name": "Pavimento pietra premium",
+      "category": "floor",
+      "layer": "pavimenti",
+      "file": "tiles/floor_stone_premium_01.png",
+      "cellsW": 1,
+      "cellsH": 1,
+      "rotations": [0, 90, 180, 270],
+      "walkable": true,
+      "blocks_sight": false,
+      "interactive": false,
+      "linkable": false,
+      "drawMode": "rect"
+    },
+    {
+      "id": "wall_stone_premium_01",
+      "name": "Muro pietra premium",
+      "category": "wall",
+      "layer": "architettura",
+      "file": "tiles/wall_stone_premium_01.png",
+      "cellsW": 1,
+      "cellsH": 0.5,
+      "rotations": [0, 90, 180, 270],
+      "walkable": false,
+      "blocks_sight": true,
+      "interactive": false,
+      "linkable": false,
+      "drawMode": "line",
+      "drawThickness": 0.5
+    },
+    {
+      "id": "door_wood_iron_premium_01",
+      "name": "Porta legno e ferro premium",
+      "category": "door",
+      "layer": "porte",
+      "file": "tiles/door_wood_iron_premium_01.png",
+      "cellsW": 1,
+      "cellsH": 0.5,
+      "rotations": [0, 90, 180, 270],
+      "walkable": false,
+      "blocks_sight": true,
+      "interactive": true,
+      "linkable": false,
+      "states": ["closed", "open", "locked"]
+    },
+    {
+      "id": "crate_premium_01",
+      "name": "Cassa premium",
+      "category": "container",
+      "layer": "arredi",
+      "file": "tiles/crate_premium_01.png",
+      "cellsW": 0.5,
+      "cellsH": 0.5,
+      "rotations": [0, 90, 180, 270],
+      "walkable": false,
+      "blocks_sight": false,
+      "interactive": true,
+      "linkable": false
+    }
+  ]
+}

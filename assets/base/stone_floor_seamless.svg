@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" shape-rendering="geometricPrecision">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#58524a"/>
+      <stop offset="100%" stop-color="#3a342f"/>
+    </linearGradient>
+    <linearGradient id="patch1" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#6a645c"/>
+      <stop offset="100%" stop-color="#4c4640"/>
+    </linearGradient>
+    <linearGradient id="patch2" x1="1" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#746b60"/>
+      <stop offset="100%" stop-color="#534c44"/>
+    </linearGradient>
+    <filter id="soft">
+      <feGaussianBlur stdDeviation="0.35"/>
+    </filter>
+  </defs>
+  <rect width="100" height="100" fill="url(#bg)"/>
+  <path d="M0,14 C11,10 21,8 34,12 C47,16 58,10 71,13 C84,16 92,14 100,11 L100,35 C87,37 79,31 67,34 C54,38 42,37 29,32 C18,28 10,28 0,31 Z" fill="#655d54" opacity="0.50"/>
+  <path d="M0,58 C12,54 19,49 32,52 C44,56 56,49 69,52 C80,55 91,55 100,52 L100,74 C90,75 80,71 67,73 C55,75 43,76 31,72 C20,68 11,70 0,73 Z" fill="#70675d" opacity="0.45"/>
+  <path d="M0,82 C14,79 24,76 36,79 C49,82 60,77 72,80 C84,83 92,83 100,81 L100,100 L0,100 Z" fill="#4a443d" opacity="0.55"/>
+  <path d="M-2,0 C8,5 19,7 30,3 C42,-1 52,0 63,4 C76,9 88,7 102,3 L102,15 C88,20 77,17 63,13 C49,9 40,10 28,15 C18,19 8,19 -2,16 Z" fill="#736a60" opacity="0.35"/>
+  <g fill="none" stroke-linecap="round" stroke="#2e2925" opacity="0.55">
+    <path d="M12 14 C15 24, 12 34, 18 43 C22 49, 26 57, 24 70" stroke-width="1.4"/>
+    <path d="M40 8 C45 17, 48 27, 46 39 C44 48, 41 59, 43 72" stroke-width="1.2"/>
+    <path d="M76 9 C72 21, 70 33, 73 45 C76 58, 81 66, 79 79" stroke-width="1.3"/>
+    <path d="M4 42 C17 37, 25 36, 35 39 C48 43, 58 43, 71 39 C81 36, 90 36, 100 39" stroke-width="1.0"/>
+    <path d="M0 90 C11 86, 23 84, 35 87 C48 90, 57 90, 71 87 C83 84, 92 84, 100 86" stroke-width="0.9"/>
+    <path d="M57 54 l7 6 l-5 8" stroke-width="1.0"/>
+    <path d="M28 60 l9 4 l-2 8" stroke-width="1.0"/>
+  </g>
+  <g fill="#85796a" opacity="0.22" filter="url(#soft)">
+    <circle cx="17" cy="21" r="8"/>
+    <circle cx="65" cy="26" r="7"/>
+    <circle cx="37" cy="55" r="10"/>
+    <circle cx="79" cy="69" r="9"/>
+    <circle cx="20" cy="84" r="8"/>
+  </g>
+</svg>

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="220" height="220" viewBox="0 0 220 220">
+<rect width="220" height="220" fill="#3b3832"/>
+<g stroke="#625a4e" stroke-width="2" opacity=".75"><path d="M0 55h220M0 110h220M0 165h220M55 0v220M110 0v220M165 0v220"/></g>
+<g stroke="#24221f" stroke-width="2" opacity=".85"><path d="M20 30c20-10 30 8 52-3M130 70c18 8 28-5 50 5M50 160c18-18 50 6 70-11M150 150c25 0 15 30 40 32"/></g>
+</svg>

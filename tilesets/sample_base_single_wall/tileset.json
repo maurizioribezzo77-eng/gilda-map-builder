@@ -1,0 +1,185 @@
+{
+  "format": "map-generator-tileset",
+  "version": 1,
+  "id": "gilda_base_export_v1",
+  "name": "Gilda Base Export v1",
+  "author": "Map Generator",
+  "cellSize": 256,
+  "maxTileCells": 4,
+  "grid": "square",
+  "allowedRotations": [
+    0,
+    90,
+    180,
+    270
+  ],
+  "tiles": [
+    {
+      "id": "floor_rock_01",
+      "name": "Pavimento roccioso",
+      "category": "floor",
+      "layer": "pavimenti",
+      "file": "tiles/floor_rock_01.png",
+      "cellsW": 1,
+      "cellsH": 1,
+      "rotations": [
+        0,
+        90,
+        180,
+        270
+      ],
+      "walkable": true,
+      "blocks_sight": false,
+      "interactive": false,
+      "linkable": false,
+      "drawMode": "rect"
+    },
+    {
+      "id": "wall_masonry_01",
+      "name": "Muro muratura",
+      "category": "wall",
+      "layer": "architettura",
+      "file": "tiles/wall_masonry_01.png",
+      "cellsW": 1,
+      "cellsH": 0.5,
+      "rotations": [
+        0,
+        90,
+        180,
+        270
+      ],
+      "walkable": false,
+      "blocks_sight": true,
+      "interactive": false,
+      "linkable": false,
+      "drawMode": "line",
+      "drawThickness": 0.5
+    },
+    {
+      "id": "wall_rough_01",
+      "name": "Muro roccia",
+      "category": "wall",
+      "layer": "architettura",
+      "file": "tiles/wall_rough_01.png",
+      "cellsW": 1,
+      "cellsH": 0.5,
+      "rotations": [
+        0,
+        90,
+        180,
+        270
+      ],
+      "walkable": false,
+      "blocks_sight": true,
+      "interactive": false,
+      "linkable": false,
+      "drawMode": "line",
+      "drawThickness": 0.5
+    },
+    {
+      "id": "door_wood_01",
+      "name": "Porta legno",
+      "category": "door",
+      "layer": "porte",
+      "file": "tiles/door_wood_01.png",
+      "cellsW": 1,
+      "cellsH": 0.5,
+      "rotations": [
+        0,
+        90,
+        180,
+        270
+      ],
+      "walkable": false,
+      "blocks_sight": true,
+      "interactive": true,
+      "linkable": false,
+      "states": [
+        "closed",
+        "open",
+        "locked"
+      ]
+    },
+    {
+      "id": "door_secret_01",
+      "name": "Porta segreta",
+      "category": "secret_door",
+      "layer": "porte",
+      "file": "tiles/door_secret_01.png",
+      "cellsW": 1,
+      "cellsH": 0.5,
+      "rotations": [
+        0,
+        90,
+        180,
+        270
+      ],
+      "walkable": false,
+      "blocks_sight": true,
+      "interactive": true,
+      "linkable": false,
+      "states": [
+        "closed",
+        "open",
+        "locked"
+      ]
+    },
+    {
+      "id": "stairs_down_01",
+      "name": "Scala in discesa",
+      "category": "stairs",
+      "layer": "interattivi",
+      "file": "tiles/stairs_down_01.png",
+      "cellsW": 1,
+      "cellsH": 1,
+      "rotations": [
+        0,
+        90,
+        180,
+        270
+      ],
+      "walkable": true,
+      "blocks_sight": false,
+      "interactive": true,
+      "linkable": true
+    },
+    {
+      "id": "hatch_01",
+      "name": "Botola",
+      "category": "hatch",
+      "layer": "interattivi",
+      "file": "tiles/hatch_01.png",
+      "cellsW": 0.5,
+      "cellsH": 0.5,
+      "rotations": [
+        0,
+        90,
+        180,
+        270
+      ],
+      "walkable": true,
+      "blocks_sight": false,
+      "interactive": true,
+      "linkable": true
+    },
+    {
+      "id": "crate_01",
+      "name": "Cassa",
+      "category": "container",
+      "layer": "arredi",
+      "file": "tiles/crate_01.png",
+      "cellsW": 0.5,
+      "cellsH": 0.5,
+      "rotations": [
+        0,
+        90,
+        180,
+        270
+      ],
+      "walkable": false,
+      "blocks_sight": false,
+      "interactive": true,
+      "linkable": false
+    }
+  ]
+}
