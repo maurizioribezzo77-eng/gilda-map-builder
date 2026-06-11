@@ -28,6 +28,7 @@ const DEFAULT_LAYER_DEFS = [
   { id:"sfondo", name:"Sfondo", visibleMaster:true, visiblePlayer:true, locked:true },
   { id:"pavimenti", name:"Pavimenti", visibleMaster:true, visiblePlayer:true, locked:true },
   { id:"architettura", name:"Architettura", visibleMaster:true, visiblePlayer:true, locked:true },
+  { id:"layer-sketch", name:"Sketch Layer", visibleMaster:true, visiblePlayer:false, locked:false },
   { id:"porte", name:"Porte e passaggi", visibleMaster:true, visiblePlayer:true, locked:false },
   { id:"arredi", name:"Arredi", visibleMaster:true, visiblePlayer:true, locked:false },
   { id:"interattivi", name:"Oggetti interattivi", visibleMaster:true, visiblePlayer:true, locked:false },
@@ -2295,6 +2296,7 @@ function cleanDefaultProjectCanvas() {
       w:3000,
       h:2000
     },
+    elements:[],
     objects:[]
   }];
 }
@@ -2304,13 +2306,23 @@ cleanDefaultProjectCanvas();
 let selectedId = null;
 let selectedIds = [];
 let selectedAssetId = null;
+let elementToolMode = null;
+let elementDrawState = null;
 let brushDrawState = null;
+let sketchToolMode = null;
+let sketchDrawState = null;
+let activeSketchTool = null;
+let activeSketchDrawState = null;
+let roomToolActive = false;
+let roomShape = "rect";
+let roomDrawState = null;
 let smartBrushKind = "dungeon";
 let smartBrushPreset = "inhabited";
 let smartToolMode = null;
 let smartDragState = null;
 let clipboard = null;
 let dragState = null;
+let elementDragState = null;
 let panState = null;
 let viewportDragState = null;
 let lastSyncedRaw = "";
@@ -2319,6 +2331,7 @@ const canvas = document.getElementById("canvas");
 const canvasStage = document.getElementById("canvasStage");
 const canvasWrap = document.getElementById("canvasWrap");
 const smartLayer = document.getElementById("smartLayer");
+const sketchLayer = document.getElementById("sketchLayer");
 const viewportLayer = document.getElementById("viewportLayer");
 const viewportHandle = document.getElementById("viewportHandle");
 const playerViewLayer = document.getElementById("playerViewLayer");

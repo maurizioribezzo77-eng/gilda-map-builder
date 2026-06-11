@@ -20,6 +20,8 @@ document.getElementById("btnNewMap").onclick = () => {
     views:[],
     groups:{},
     smartLayers:[],
+    elements:[],
+    layers:[],
     objects:[]
   };
   project.maps.push(m);
@@ -62,6 +64,16 @@ document.getElementById("btnExitPlay").onclick = enterEditorMode;
 document.getElementById("btnSmartWallDraw").onclick = () => setSmartWallTool("draw");
 document.getElementById("btnSmartWallErase").onclick = () => setSmartWallTool("erase");
 document.getElementById("btnSmartWallOff").onclick = () => setSmartWallTool(null);
+document.getElementById("btnSketchPencil").onclick = () => setSketchTool("pencil");
+document.getElementById("btnSketchEraser").onclick = () => setSketchTool("eraser");
+document.getElementById("btnSketchOff").onclick = () => setSketchTool(null);
+document.getElementById("btnRoomTool").onclick = () => setRoomTool(true);
+document.getElementById("btnRoomToolOff").onclick = () => setRoomTool(false);
+document.getElementById("roomShapeSelect").onchange = e => setRoomShape(e.target.value);
+document.getElementById("btnCorridorTool").onclick = () => setElementTool("corridor");
+document.getElementById("btnDoorTool").onclick = () => setElementTool("door");
+document.getElementById("btnStairTool").onclick = () => setElementTool("stair");
+document.getElementById("btnElementToolOff").onclick = () => setElementTool(null);
 document.getElementById("smartBrushKind").onchange = e => setSmartBrushKind(e.target.value);
 document.getElementById("smartBrushPreset").onchange = e => setSmartBrushPreset(e.target.value);
 document.getElementById("zoom").oninput = applyZoom;
@@ -116,6 +128,9 @@ if (isPlayerWindow) {
 buildLibrary();
 buildLayerControls();
 syncTopControls();
+updateRoomToolStatus();
+updateSketchStatus();
+updateElementToolStatus();
 applyZoom();
 render();
 applyModeUI();

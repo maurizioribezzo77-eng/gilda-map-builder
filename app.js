@@ -28,6 +28,7 @@ const DEFAULT_LAYER_DEFS = [
   { id:"sfondo", name:"Sfondo", visibleMaster:true, visiblePlayer:true, locked:true },
   { id:"pavimenti", name:"Pavimenti", visibleMaster:true, visiblePlayer:true, locked:true },
   { id:"architettura", name:"Architettura", visibleMaster:true, visiblePlayer:true, locked:true },
+  { id:"layer-sketch", name:"Sketch Layer", visibleMaster:true, visiblePlayer:false, locked:false },
   { id:"porte", name:"Porte e passaggi", visibleMaster:true, visiblePlayer:true, locked:false },
   { id:"arredi", name:"Arredi", visibleMaster:true, visiblePlayer:true, locked:false },
   { id:"interattivi", name:"Oggetti interattivi", visibleMaster:true, visiblePlayer:true, locked:false },
@@ -2295,6 +2296,7 @@ function cleanDefaultProjectCanvas() {
       w:3000,
       h:2000
     },
+    elements:[],
     objects:[]
   }];
 }
@@ -2304,13 +2306,23 @@ cleanDefaultProjectCanvas();
 let selectedId = null;
 let selectedIds = [];
 let selectedAssetId = null;
+let elementToolMode = null;
+let elementDrawState = null;
 let brushDrawState = null;
+let sketchToolMode = null;
+let sketchDrawState = null;
+let activeSketchTool = null;
+let activeSketchDrawState = null;
+let roomToolActive = false;
+let roomShape = "rect";
+let roomDrawState = null;
 let smartBrushKind = "dungeon";
 let smartBrushPreset = "inhabited";
 let smartToolMode = null;
 let smartDragState = null;
 let clipboard = null;
 let dragState = null;
+let elementDragState = null;
 let panState = null;
 let viewportDragState = null;
 let lastSyncedRaw = "";
@@ -2319,6 +2331,7 @@ const canvas = document.getElementById("canvas");
 const canvasStage = document.getElementById("canvasStage");
 const canvasWrap = document.getElementById("canvasWrap");
 const smartLayer = document.getElementById("smartLayer");
+const sketchLayer = document.getElementById("sketchLayer");
 const viewportLayer = document.getElementById("viewportLayer");
 const viewportHandle = document.getElementById("viewportHandle");
 const playerViewLayer = document.getElementById("playerViewLayer");
@@ -2338,29 +2351,847 @@ function cellsFromPx(px) { return +(px / grid()).toFixed(2); }
 function snapValue(v) { return project.snap ? Math.round(v / snapStep()) * snapStep() : Math.round(v); }
 
 
+// ===== 05_geometry.js =====
+
+// Geometrie pure e renderer SVG leggero per gli elementi Sketch to Dungeon.
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+function point(x, y) {
+  return { x, y };
+}
+
+function regularPolygonPoints(cx, cy, radius, sides, startAngleDeg = -90) {
+  const pts = [];
+  for (let i = 0; i < sides; i += 1) {
+    const angle = (startAngleDeg + i * 360 / sides) * Math.PI / 180;
+    pts.push(point(
+      Math.round(cx + Math.cos(angle) * radius),
+      Math.round(cy + Math.sin(angle) * radius)
+    ));
+  }
+  return pts;
+}
+
+function createRectGeometry(x, y, width, height) {
+  return { kind:"rect", x:Number(x), y:Number(y), width:Number(width), height:Number(height) };
+}
+
+function createCircleGeometry(cx, cy, radius) {
+  return { kind:"circle", cx:Number(cx), cy:Number(cy), radius:Number(radius) };
+}
+
+function createRegularPolygonGeometry(cx, cy, radius, sides, rotation = 0) {
+  const count = Math.max(3, Math.floor(Number(sides) || 0));
+  const centerX = Number(cx);
+  const centerY = Number(cy);
+  const r = Number(radius);
+  const startAngleDeg = Number(rotation) || 0;
+  const points = [];
+
+  for (let i = 0; i < count; i += 1) {
+    const angle = (startAngleDeg + i * 360 / count) * Math.PI / 180;
+    points.push(point(centerX + Math.cos(angle) * r, centerY + Math.sin(angle) * r));
+  }
+
+  return createPolygonGeometry(points);
+}
+
+function createPolygonGeometry(points) {
+  return { kind:"polygon", points:points.map(p => point(p.x, p.y)) };
+}
+
+function createPolylineGeometry(points, width, closed = false) {
+  return { kind:"polyline", points:points.map(p => point(p.x, p.y)), width, closed };
+}
+
+function createPointGeometry(x, y) {
+  return { kind:"point", x:Number(x), y:Number(y) };
+}
+
+function isPolylineGeometry(geometry) {
+  return geometry && geometry.kind === "polyline" && Array.isArray(geometry.points);
+}
+
+function isCircleGeometry(geometry) {
+  return geometry && geometry.kind === "circle";
+}
+
+function isPolygonGeometry(geometry) {
+  return geometry && geometry.kind === "polygon" && Array.isArray(geometry.points);
+}
+
+function createPentagonGeometry(cx, cy, radius) {
+  return createRegularPolygonGeometry(cx, cy, radius, 5, -90);
+}
+
+function createHexagonGeometry(cx, cy, radius) {
+  return createRegularPolygonGeometry(cx, cy, radius, 6, -90);
+}
+
+function getGeometryBounds(geometry) {
+  const bounds = geometryBounds(geometry);
+  return { x:bounds.x, y:bounds.y, width:bounds.w, height:bounds.h };
+}
+
+function getGeometryCenter(geometry) {
+  return geometryCenter(geometry);
+}
+
+function pointInGeometry(p, geometry) {
+  if (geometry.kind === "rect") return p.x >= geometry.x && p.x <= geometry.x + geometry.width && p.y >= geometry.y && p.y <= geometry.y + geometry.height;
+  if (geometry.kind === "circle") return distance(p, point(geometry.cx, geometry.cy)) <= geometry.radius;
+  if (geometry.kind === "polygon") return pointInPolygon(p, geometry.points || []);
+  if (geometry.kind === "polyline") return distanceToPolyline(p, geometry.points || [], !!geometry.closed) <= Math.max(1, Number(geometry.width || 1) / 2);
+  return p.x === geometry.x && p.y === geometry.y;
+}
+
+function snapGeometryToGrid(geometry, gridSize) {
+  const size = Number(gridSize);
+  if (!Number.isFinite(size) || size <= 0) return geometry;
+  const center = getGeometryCenter(geometry);
+  const snapped = point(Math.round(center.x / size) * size, Math.round(center.y / size) * size);
+  return moveGeometry(geometry, snapped.x - center.x, snapped.y - center.y);
+}
+
+function moveGeometry(geometry, dx, dy) {
+  if (geometry.kind === "rect") return createRectGeometry(geometry.x + dx, geometry.y + dy, geometry.width, geometry.height);
+  if (geometry.kind === "circle") return createCircleGeometry(geometry.cx + dx, geometry.cy + dy, geometry.radius);
+  if (geometry.kind === "point") return createPointGeometry(geometry.x + dx, geometry.y + dy);
+  if (geometry.kind === "polygon") return createPolygonGeometry((geometry.points || []).map(p => point(p.x + dx, p.y + dy)));
+  return createPolylineGeometry((geometry.points || []).map(p => point(p.x + dx, p.y + dy)), geometry.width, geometry.closed);
+}
+
+function rotateGeometry(geometry, angleDeg, origin = getGeometryCenter(geometry)) {
+  const rotatePoint = p => {
+    const angle = angleDeg * Math.PI / 180;
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    const dx = p.x - origin.x;
+    const dy = p.y - origin.y;
+    return point(origin.x + dx * cos - dy * sin, origin.y + dx * sin + dy * cos);
+  };
+
+  if (geometry.kind === "rect") {
+    return createPolygonGeometry([
+      rotatePoint(point(geometry.x, geometry.y)),
+      rotatePoint(point(geometry.x + geometry.width, geometry.y)),
+      rotatePoint(point(geometry.x + geometry.width, geometry.y + geometry.height)),
+      rotatePoint(point(geometry.x, geometry.y + geometry.height))
+    ]);
+  }
+  if (geometry.kind === "circle") return createCircleGeometry(...Object.values(rotatePoint(point(geometry.cx, geometry.cy))), geometry.radius);
+  if (geometry.kind === "point") return createPointGeometry(...Object.values(rotatePoint(geometry)));
+  if (geometry.kind === "polygon") return createPolygonGeometry((geometry.points || []).map(rotatePoint));
+  return createPolylineGeometry((geometry.points || []).map(rotatePoint), geometry.width, geometry.closed);
+}
+
+function geometryIntersectsGeometry(a, b) {
+  const ab = getGeometryBounds(a);
+  const bb = getGeometryBounds(b);
+  return ab.x <= bb.x + bb.width &&
+    ab.x + ab.width >= bb.x &&
+    ab.y <= bb.y + bb.height &&
+    ab.y + ab.height >= bb.y;
+}
+
+function createDemoElements() {
+  return [
+    {
+      id:"demo_room_rect",
+      type:"room",
+      name:"Sala rettangolare",
+      geometry:{ kind:"rect", x:300, y:300, width:600, height:400 },
+      rotation:0,
+      visibleToPlayers:true,
+      notesMaster:"",
+      notesPlayer:"",
+      linkedMapId:null,
+      style:{ fill:"rgba(191,194,183,.92)", stroke:"#1f2321", strokeWidth:6, label:"Rect" },
+      layerId:"architettura"
+    },
+    {
+      id:"demo_room_circle",
+      type:"room",
+      name:"Sala circolare",
+      geometry:{ kind:"circle", cx:1450, cy:520, radius:230 },
+      rotation:0,
+      visibleToPlayers:true,
+      notesMaster:"",
+      notesPlayer:"",
+      linkedMapId:null,
+      style:{ fill:"rgba(196,184,157,.9)", stroke:"#26231d", strokeWidth:6, label:"Circle" },
+      layerId:"architettura"
+    },
+    {
+      id:"demo_room_hex",
+      type:"room",
+      name:"Sala esagonale",
+      geometry:{ kind:"polygon", points:regularPolygonPoints(2350, 520, 250, 6, -90) },
+      rotation:0,
+      visibleToPlayers:true,
+      notesMaster:"",
+      notesPlayer:"",
+      linkedMapId:null,
+      style:{ fill:"rgba(159,190,178,.9)", stroke:"#1f2b2a", strokeWidth:6, label:"Hex" },
+      layerId:"architettura"
+    },
+    {
+      id:"demo_corridor_polyline",
+      type:"corridor",
+      name:"Corridoio",
+      geometry:{ kind:"polyline", points:[point(900, 500), point(1120, 500), point(1220, 520)], width:90 },
+      rotation:0,
+      visibleToPlayers:true,
+      notesMaster:"",
+      notesPlayer:"",
+      linkedMapId:null,
+      style:{ stroke:"#2b2c29", strokeWidth:90, opacity:.55 },
+      layerId:"architettura"
+    },
+    {
+      id:"demo_door_rect",
+      type:"door",
+      name:"Porta",
+      geometry:{ kind:"rect", x:895, y:460, width:34, height:82 },
+      rotation:0,
+      visibleToPlayers:true,
+      notesMaster:"",
+      notesPlayer:"",
+      linkedMapId:null,
+      style:{ fill:"#7b4b26", stroke:"#24170f", strokeWidth:4, label:"Door" },
+      layerId:"porte"
+    },
+    {
+      id:"demo_stair_point",
+      type:"stair",
+      name:"Scala",
+      geometry:{ kind:"point", x:1680, y:650 },
+      rotation:0,
+      visibleToPlayers:true,
+      notesMaster:"",
+      notesPlayer:"",
+      linkedMapId:null,
+      style:{ fill:"#d8c07a", stroke:"#352811", strokeWidth:4, label:"Stair" },
+      layerId:"interattivi"
+    },
+    {
+      id:"demo_pin_secret",
+      type:"pin",
+      name:"Pin segreto",
+      geometry:{ kind:"point", x:2050, y:280 },
+      rotation:0,
+      visibleToPlayers:false,
+      notesMaster:"Visibile solo al Master.",
+      notesPlayer:"",
+      linkedMapId:null,
+      style:{ fill:"#9b3434", stroke:"#260b0b", strokeWidth:4, label:"M" },
+      layerId:"layer-sketch"
+    },
+    {
+      id:"demo_token_circle",
+      type:"token",
+      name:"Token visibile",
+      geometry:{ kind:"circle", cx:540, cy:520, radius:45 },
+      rotation:0,
+      visibleToPlayers:true,
+      notesMaster:"",
+      notesPlayer:"",
+      linkedMapId:null,
+      style:{ fill:"#526da8", stroke:"#101928", strokeWidth:5, label:"T" },
+      layerId:"token"
+    },
+    {
+      id:"demo_tile_rect",
+      type:"tile",
+      name:"Tile pavimento",
+      geometry:{ kind:"rect", x:300, y:820, width:200, height:200 },
+      rotation:0,
+      visibleToPlayers:true,
+      notesMaster:"",
+      notesPlayer:"",
+      linkedMapId:null,
+      style:{ fill:"rgba(125,133,127,.82)", stroke:"rgba(31,35,33,.42)", strokeWidth:3, label:"Tile" },
+      layerId:"pavimenti"
+    },
+    {
+      id:"demo_sketch_stroke",
+      type:"sketchStroke",
+      name:"Schizzo",
+      geometry:{ kind:"polyline", points:[point(640, 920), point(760, 840), point(880, 940), point(1020, 860)], width:22 },
+      rotation:0,
+      visibleToPlayers:false,
+      notesMaster:"Tratto preparatorio nascosto ai giocatori.",
+      notesPlayer:"",
+      linkedMapId:null,
+      style:{ stroke:"#5b2e2e", strokeWidth:22, opacity:.75 },
+      layerId:"note_master"
+    }
+  ];
+}
+
+function normalizeElement(element) {
+  element.id = element.id || uid();
+  element.type = element.type || "room";
+  element.name = element.name || element.type;
+  element.rotation = Number(element.rotation || 0);
+  if (typeof element.visibleToPlayers !== "boolean") element.visibleToPlayers = element.type === "pin" ? false : true;
+  element.notesMaster = element.notesMaster || "";
+  element.notesPlayer = element.notesPlayer || "";
+  element.linkedMapId = element.linkedMapId || null;
+  element.style = element.style || {};
+  element.layerId = LAYERS.includes(element.layerId) ? element.layerId : defaultLayerForElementType(element.type);
+  element.geometry = normalizeGeometry(element.geometry);
+  return element;
+}
+
+function normalizeGeometry(geometry) {
+  if (!geometry || !geometry.kind) return { kind:"point", x:0, y:0 };
+  if (geometry.kind === "rect") {
+    return {
+      kind:"rect",
+      x:Number(geometry.x || 0),
+      y:Number(geometry.y || 0),
+      width:Math.max(1, Number(geometry.width || geometry.w || 1)),
+      height:Math.max(1, Number(geometry.height || geometry.h || 1))
+    };
+  }
+  if (geometry.kind === "circle") {
+    return {
+      kind:"circle",
+      cx:Number(geometry.cx || 0),
+      cy:Number(geometry.cy || 0),
+      radius:Math.max(1, Number(geometry.radius || 1))
+    };
+  }
+  if (geometry.kind === "polygon" || geometry.kind === "polyline") {
+    return {
+      kind:geometry.kind,
+      points:(geometry.points || []).map(p => point(Number(p.x || 0), Number(p.y || 0))),
+      width:geometry.width === undefined ? undefined : Math.max(1, Number(geometry.width)),
+      closed:!!geometry.closed
+    };
+  }
+  return { kind:"point", x:Number(geometry.x || 0), y:Number(geometry.y || 0) };
+}
+
+function defaultLayerForElementType(type) {
+  if (type === "tile") return "pavimenti";
+  if (type === "door") return "porte";
+  if (type === "stair") return "interattivi";
+  if (type === "sketchStroke") return "layer-sketch";
+  if (type === "pin") return "note_master";
+  if (type === "token") return "token";
+  return "architettura";
+}
+
+function elementLayerId(element) {
+  if (!element.layerId || !LAYERS.includes(element.layerId)) element.layerId = defaultLayerForElementType(element.type);
+  return element.layerId;
+}
+
+function elementVisibleForMaster(element) {
+  return true;
+}
+
+function elementVisibleForPlayer(element) {
+  return element.visibleToPlayers === true;
+}
+
+function renderGeometryElements() {
+  let layer = document.getElementById("elementLayer");
+  if (!layer) {
+    layer = document.createElementNS(SVG_NS, "svg");
+    layer.id = "elementLayer";
+    layer.classList.add("elementLayer");
+    canvas.insertBefore(layer, viewportLayer);
+  }
+
+  const map = activeMap();
+  layer.setAttribute("viewBox", `0 0 ${map.width} ${map.height}`);
+  layer.setAttribute("width", map.width);
+  layer.setAttribute("height", map.height);
+  layer.innerHTML = "";
+
+  const elements = (map.elements || []).filter(element => {
+    if (element.type === "sketchStroke") return false;
+    if (project.mode === "play" || isPlayerWindow) return elementVisibleForPlayer(element);
+    return elementVisibleForMaster(element);
+  });
+
+  elements
+    .slice()
+    .sort((a, b) => layerBaseZ(elementLayerId(a)) - layerBaseZ(elementLayerId(b)))
+    .forEach(element => layer.appendChild(renderGeometryElementNode(element)));
+}
+
+function renderGeometryElementNode(element) {
+  const group = document.createElementNS(SVG_NS, "g");
+  const selected = isSelected(element.id);
+  group.classList.add("geometryElement", `geometry-${element.type}`, selected ? "selected" : "notSelected");
+  if (element.visibleToPlayers === false && !isPlayerWindow && project.mode === "editor") group.classList.add("hiddenPlayer");
+  group.dataset.id = element.id;
+
+  const shape = shapeNodeForElement(element);
+  group.appendChild(shape);
+
+  const label = labelForElement(element);
+  if (label) group.appendChild(label);
+  return group;
+}
+
+function shapeNodeForElement(element) {
+  const g = element.geometry;
+  const style = styleForElement(element);
+  let node;
+
+  if (g.kind === "rect") {
+    node = document.createElementNS(SVG_NS, "rect");
+    node.setAttribute("x", g.x);
+    node.setAttribute("y", g.y);
+    node.setAttribute("width", g.width);
+    node.setAttribute("height", g.height);
+  } else if (g.kind === "circle") {
+    node = document.createElementNS(SVG_NS, "circle");
+    node.setAttribute("cx", g.cx);
+    node.setAttribute("cy", g.cy);
+    node.setAttribute("r", g.radius);
+  } else if (g.kind === "polygon") {
+    node = document.createElementNS(SVG_NS, "polygon");
+    node.setAttribute("points", pointsAttr(g.points));
+  } else if (g.kind === "polyline") {
+    node = document.createElementNS(SVG_NS, "polyline");
+    node.setAttribute("points", pointsAttr(g.points));
+    node.setAttribute("fill", "none");
+    node.setAttribute("stroke-linecap", "round");
+    node.setAttribute("stroke-linejoin", "round");
+  } else {
+    node = document.createElementNS(SVG_NS, "circle");
+    node.setAttribute("cx", g.x);
+    node.setAttribute("cy", g.y);
+    node.setAttribute("r", pointRadiusForElement(element));
+  }
+
+  node.classList.add("geometryShape");
+  node.setAttribute("fill", style.fill);
+  node.setAttribute("stroke", style.stroke);
+  node.setAttribute("stroke-width", style.strokeWidth);
+  node.setAttribute("opacity", style.opacity);
+  return node;
+}
+
+function styleForElement(element) {
+  const base = defaultStyleForElementType(element.type);
+  const style = element.style || {};
+  return {
+    fill: style.fill || base.fill,
+    stroke: style.stroke || base.stroke,
+    strokeWidth: Number(style.strokeWidth || style.strokeWidth === 0 ? style.strokeWidth : base.strokeWidth),
+    opacity: Number(style.opacity || style.opacity === 0 ? style.opacity : base.opacity)
+  };
+}
+
+function defaultStyleForElementType(type) {
+  const styles = {
+    room:{ fill:"rgba(188,191,181,.9)", stroke:"#20231f", strokeWidth:5, opacity:1 },
+    corridor:{ fill:"none", stroke:"#30302b", strokeWidth:70, opacity:.55 },
+    door:{ fill:"#774722", stroke:"#20140c", strokeWidth:4, opacity:1 },
+    stair:{ fill:"#d5bd73", stroke:"#332713", strokeWidth:4, opacity:1 },
+    pin:{ fill:"#9b3434", stroke:"#270b0b", strokeWidth:4, opacity:1 },
+    token:{ fill:"#526da8", stroke:"#101928", strokeWidth:5, opacity:1 },
+    tile:{ fill:"rgba(125,133,127,.8)", stroke:"rgba(31,35,33,.42)", strokeWidth:2, opacity:1 },
+    sketchStroke:{ fill:"none", stroke:"#5b2e2e", strokeWidth:16, opacity:.72 }
+  };
+  return styles[type] || styles.room;
+}
+
+function pointRadiusForElement(element) {
+  if (element.type === "pin") return 30;
+  if (element.type === "stair") return 42;
+  if (element.type === "token") return 45;
+  return 24;
+}
+
+function pointsAttr(points) {
+  return (points || []).map(p => `${p.x},${p.y}`).join(" ");
+}
+
+function labelForElement(element) {
+  const text = element.style?.label;
+  if (!text) return null;
+  const center = geometryCenter(element.geometry);
+  const label = document.createElementNS(SVG_NS, "text");
+  label.classList.add("geometryLabel");
+  label.setAttribute("x", center.x);
+  label.setAttribute("y", center.y);
+  label.textContent = text;
+  return label;
+}
+
+function geometryCenter(geometry) {
+  const b = geometryBounds(geometry);
+  return point(b.x + b.w / 2, b.y + b.h / 2);
+}
+
+function geometryBounds(geometry) {
+  if (geometry.kind === "rect") return { x:geometry.x, y:geometry.y, w:geometry.width, h:geometry.height };
+  if (geometry.kind === "circle") return { x:geometry.cx - geometry.radius, y:geometry.cy - geometry.radius, w:geometry.radius * 2, h:geometry.radius * 2 };
+  if (geometry.kind === "point") {
+    const r = 50;
+    return { x:geometry.x - r, y:geometry.y - r, w:r * 2, h:r * 2 };
+  }
+  const pts = geometry.points || [];
+  if (!pts.length) return { x:0, y:0, w:0, h:0 };
+  const minX = Math.min(...pts.map(p => p.x));
+  const minY = Math.min(...pts.map(p => p.y));
+  const maxX = Math.max(...pts.map(p => p.x));
+  const maxY = Math.max(...pts.map(p => p.y));
+  const pad = Math.max(0, Number(geometry.width || 0) / 2);
+  return { x:minX - pad, y:minY - pad, w:maxX - minX + pad * 2, h:maxY - minY + pad * 2 };
+}
+
+function selectElementAtPoint(canvasPoint, event) {
+  const element = hitTestElements(canvasPoint);
+  if (!element) return false;
+
+  if (event && (event.shiftKey || event.ctrlKey || event.metaKey)) toggleObjectSelection(element.id);
+  else setSingleSelection(element.id);
+
+  if (event && element.type === "token" && project.mode === "editor" && !isPlayerWindow && element.geometry?.kind === "point") {
+    elementDragState = {
+      id:element.id,
+      startX:event.clientX,
+      startY:event.clientY,
+      origin:{ x:element.geometry.x, y:element.geometry.y },
+      pointerId:event.pointerId
+    };
+    if (canvas.setPointerCapture && event.pointerId !== undefined) {
+      try { canvas.setPointerCapture(event.pointerId); } catch (err) {}
+    }
+  }
+
+  selectedAssetId = null;
+  updateBrushStatus();
+  renderObjects();
+  renderGeometryElements();
+  renderProperties();
+  status(`Selezionato: ${element.name}`);
+  return true;
+}
+
+function hitTestElements(canvasPoint) {
+  const map = activeMap();
+  return (map.elements || [])
+    .filter(element => {
+      if (element.type === "sketchStroke") return false;
+      if (project.mode === "play" || isPlayerWindow) return elementVisibleForPlayer(element);
+      return elementVisibleForMaster(element);
+    })
+    .slice()
+    .sort((a, b) => layerBaseZ(elementLayerId(b)) - layerBaseZ(elementLayerId(a)))
+    .find(element => geometryHitTest(element, canvasPoint)) || null;
+}
+
+function geometryHitTest(element, p) {
+  const g = element.geometry;
+  const tolerance = Math.max(10, Number(element.style?.strokeWidth || 0) / 2);
+  if (g.kind === "rect") return p.x >= g.x - tolerance && p.x <= g.x + g.width + tolerance && p.y >= g.y - tolerance && p.y <= g.y + g.height + tolerance;
+  if (g.kind === "circle") return distance(p, point(g.cx, g.cy)) <= g.radius + tolerance;
+  if (g.kind === "polygon") return pointInPolygon(p, g.points || []) || distanceToPolyline(p, g.points || [], true) <= tolerance;
+  if (g.kind === "polyline") return distanceToPolyline(p, g.points || [], !!g.closed) <= Math.max(tolerance, Number(g.width || element.style?.strokeWidth || 20) / 2);
+  if (g.kind === "point") return distance(p, point(g.x, g.y)) <= pointRadiusForElement(element) + tolerance;
+  return false;
+}
+
+function pointInPolygon(p, points) {
+  let inside = false;
+  for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+    const pi = points[i];
+    const pj = points[j];
+    const intersects = ((pi.y > p.y) !== (pj.y > p.y)) &&
+      (p.x < (pj.x - pi.x) * (p.y - pi.y) / Math.max(.00001, pj.y - pi.y) + pi.x);
+    if (intersects) inside = !inside;
+  }
+  return inside;
+}
+
+function distanceToPolyline(p, points, closed = false) {
+  if (!points || points.length < 2) return Infinity;
+  let min = Infinity;
+  for (let i = 0; i < points.length - 1; i++) min = Math.min(min, distanceToSegment(p, points[i], points[i + 1]));
+  if (closed) min = Math.min(min, distanceToSegment(p, points[points.length - 1], points[0]));
+  return min;
+}
+
+function distanceToSegment(p, a, b) {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len2 = dx * dx + dy * dy;
+  if (!len2) return distance(p, a);
+  const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2));
+  return distance(p, point(a.x + t * dx, a.y + t * dy));
+}
+
+function distance(a, b) {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+function scaleElementGeometry(geometry, factor) {
+  if (!geometry || !Number.isFinite(factor)) return;
+  if (geometry.kind === "rect") {
+    geometry.x = Math.round(geometry.x * factor);
+    geometry.y = Math.round(geometry.y * factor);
+    geometry.width = Math.round(geometry.width * factor);
+    geometry.height = Math.round(geometry.height * factor);
+  } else if (geometry.kind === "circle") {
+    geometry.cx = Math.round(geometry.cx * factor);
+    geometry.cy = Math.round(geometry.cy * factor);
+    geometry.radius = Math.round(geometry.radius * factor);
+  } else if (geometry.kind === "point") {
+    geometry.x = Math.round(geometry.x * factor);
+    geometry.y = Math.round(geometry.y * factor);
+  } else if (Array.isArray(geometry.points)) {
+    geometry.points.forEach(p => {
+      p.x = Math.round(p.x * factor);
+      p.y = Math.round(p.y * factor);
+    });
+    if (geometry.width) geometry.width = Math.round(geometry.width * factor);
+  }
+}
+
+function selectedElement() {
+  return (activeMap().elements || []).find(element => element.id === selectedId) || null;
+}
+
+function selectedTreeEntry() {
+  if (!selectedId) return null;
+  const map = activeMap();
+  const element = (map.elements || []).find(item => item.id === selectedId);
+  if (element) {
+    return {
+      source:"element",
+      element,
+      type:element.type,
+      geometryKind:element.geometry?.kind || ""
+    };
+  }
+
+  const object = (map.objects || []).find(item => item.id === selectedId);
+  if (!object) return null;
+  return {
+    source:"object",
+    element:object,
+    type:object.type || "tile",
+    geometryKind:"rect"
+  };
+}
+
+function normalizeElementFields(element) {
+  normalizeElement(element);
+}
+
+function normalizeObjectElementFields(object) {
+  object.type = object.type || "tile";
+  object.geometry = {
+    kind:"rect",
+    x:Number(object.x || 0),
+    y:Number(object.y || 0),
+    width:Number(object.w || 1),
+    height:Number(object.h || 1)
+  };
+  object.visibleToPlayers = object.visiblePlayer !== false;
+  object.notesMaster = object.notesMaster || object.note || "";
+  object.notesPlayer = object.notesPlayer || "";
+  object.linkedMapId = object.linkedMapId || null;
+  object.layerId = objectLayerId(object);
+}
+
+function renderElementProperties(box, element) {
+  const bounds = geometryBounds(element.geometry);
+  box.innerHTML = `
+    <label>Nome <input data-element-prop="name" value="${esc(element.name)}"></label>
+    <label>Tipo <input value="${esc(element.type)}" disabled></label>
+    <label>Geometria <input value="${esc(element.geometry.kind)}" disabled></label>
+    <label>Layer
+      <select data-element-prop="layerId">${layerOptionsHtml(elementLayerId(element))}</select>
+    </label>
+    <div class="row2">
+      <label>X q. <input value="${cellsFromPx(bounds.x)}" disabled></label>
+      <label>Y q. <input value="${cellsFromPx(bounds.y)}" disabled></label>
+    </div>
+    <div class="row2">
+      <label>Larg. q. <input value="${cellsFromPx(bounds.w)}" disabled></label>
+      <label>Alt. q. <input value="${cellsFromPx(bounds.h)}" disabled></label>
+    </div>
+    <label><input data-element-prop="visibleToPlayers" type="checkbox" ${element.visibleToPlayers !== false ? "checked" : ""}> Visibile Giocatore</label>
+    <label>Nota master <textarea data-element-prop="notesMaster" rows="3">${esc(element.notesMaster || "")}</textarea></label>
+    <p class="small">Elemento geometry-based. La selezione usa hit testing su ${esc(element.geometry.kind)}.</p>
+  `;
+
+  box.querySelectorAll("[data-element-prop]").forEach(input => {
+    input.oninput = input.onchange = () => updateElementProperty(input);
+  });
+}
+
+function updateElementProperty(input) {
+  const element = selectedElement();
+  if (!element) return;
+  const key = input.dataset.elementProp;
+  if (input.type === "checkbox") element[key] = input.checked;
+  else element[key] = input.value;
+  normalizeElement(element);
+  renderGeometryElements();
+  renderProperties();
+  publishProject();
+}
+
+function ensureSketchMapLayer(map = activeMap()) {
+  map.elements = Array.isArray(map.elements) ? map.elements : [];
+}
+
+function renderSketchLayer() {
+  if (sketchLayer) sketchLayer.innerHTML = "";
+}
+
+function handleSketchPointerDown() {
+  return false;
+}
+
+function handleSketchPointerMove() {
+  return false;
+}
+
+
 // ===== 10_ui.js =====
 
 // Gilda Map Builder MVP 0.4
 // Blocco: 10_ui.js
 // Interfaccia: albero mappe, layer, libreria asset, normalizzazione progetto, render generale, colonne laterali, modalità editor/gioco.
 
+const TREE_ELEMENT_GROUPS = [
+  { type:"room", label:"Stanze" },
+  { type:"corridor", label:"Corridoi" },
+  { type:"door", label:"Porte" },
+  { type:"stair", label:"Scale" },
+  { type:"pin", label:"Pin" },
+  { type:"token", label:"Token" },
+  { type:"tile", label:"Tile" },
+  { type:"sketchStroke", label:"Sketch" }
+];
+
 function buildTree() {
   const tree = document.getElementById("projectTree");
   tree.innerHTML = "";
-  tree.appendChild(node("▾ " + project.name));
-  tree.appendChild(node("▾ Mappe", "child"));
-  project.maps.forEach(m => {
-    const el = node("↳ " + m.name, "child" + (m.id === project.activeMapId ? " activeMap" : ""));
-    el.onclick = () => { project.activeMapId = m.id; selectedId = null; render(); };
-    tree.appendChild(el);
+  const map = activeMap();
+  const root = node("▾ Progetto: " + (project.name || "Senza nome"), "treeProject");
+  tree.appendChild(root);
+
+  const mapNode = node("▾ Mappa attiva: " + (map?.name || "Nessuna mappa"), "child treeMap activeMap");
+  mapNode.onclick = () => {
+    clearSelection();
+    renderObjects();
+    renderProperties();
+    buildTree();
+  };
+  tree.appendChild(mapNode);
+
+  if (!map) return;
+
+  const entries = treeSelectableEntries(map);
+  TREE_ELEMENT_GROUPS.forEach(group => {
+    const groupEntries = entries.filter(entry => entry.type === group.type);
+    const folder = node(`▾ ${group.label} (${groupEntries.length})`, "child treeFolder");
+    tree.appendChild(folder);
+
+    groupEntries.forEach(entry => {
+      const el = node("↳ " + entry.name, "child treeElement" + (entry.id === selectedId ? " selectedTreeNode" : ""));
+      el.title = `${entry.id} · ${entry.geometryKind}`;
+      el.onclick = e => {
+        e.stopPropagation();
+        setSingleSelection(entry.id);
+        renderObjects();
+        renderProperties();
+        buildTree();
+      };
+      tree.appendChild(el);
+    });
   });
-  ["Scene", "Asset", "Handout", "Token", "Collegamenti", "Versioni esportate"].forEach(t => tree.appendChild(node("• " + t, "child")));
 }
 function node(text, cls="") {
   const el = document.createElement("div");
   el.className = "node " + cls;
   el.textContent = text;
   return el;
+}
+
+function treeSelectableEntries(map = activeMap()) {
+  if (!map) return [];
+  const entries = [];
+
+  (map.elements || []).forEach(element => {
+    normalizeElementFields(element);
+    entries.push({
+      source:"element",
+      id:element.id,
+      type:element.type,
+      name:element.name || element.id,
+      geometryKind:element.geometry?.kind || "unknown",
+      element
+    });
+  });
+
+  (map.objects || []).forEach(obj => {
+    normalizeObjectElementFields(obj);
+    entries.push({
+      source:"object",
+      id:obj.id,
+      type:objectElementType(obj),
+      name:obj.name || obj.id,
+      geometryKind:"rect",
+      element:obj
+    });
+  });
+
+  return entries;
+}
+
+function normalizeElementFields(element) {
+  if (!element) return;
+  if (!element.name) element.name = element.id || "Elemento";
+  if (typeof element.notesMaster !== "string") element.notesMaster = element.note || "";
+  if (typeof element.notesPlayer !== "string") element.notesPlayer = "";
+  if (typeof element.visibleToPlayers !== "boolean") element.visibleToPlayers = true;
+  if (!("linkedMapId" in element)) element.linkedMapId = null;
+  if (!("layerId" in element)) element.layerId = "";
+}
+
+function normalizeObjectElementFields(obj) {
+  if (!obj) return;
+  if (!obj.name) obj.name = obj.id || "Oggetto";
+  if (typeof obj.notesMaster !== "string") obj.notesMaster = obj.note || "";
+  if (typeof obj.notesPlayer !== "string") obj.notesPlayer = "";
+  if (typeof obj.visibleToPlayers !== "boolean") obj.visibleToPlayers = obj.visiblePlayer !== false;
+  if (!("linkedMapId" in obj)) obj.linkedMapId = null;
+  if (!obj.layerId) obj.layerId = objectLayerId(obj);
+  obj.note = obj.notesMaster;
+  obj.visiblePlayer = obj.visibleToPlayers;
+  obj.layer = migrateLayer(obj.layerId || obj.layer, assetById(obj.assetId));
+  obj.layerId = obj.layer;
+}
+
+function objectElementType(obj) {
+  const asset = assetById(obj?.assetId);
+  if (!asset) return "tile";
+  if (asset.cat === "Porte") return "door";
+  if (asset.cat === "Scale e botole") return "stair";
+  if (asset.cat === "Token") return "token";
+  if (asset.cat === "Icone") return "pin";
+  if (asset.cat === "Muri") return "corridor";
+  return "tile";
+}
+
+function selectedTreeEntry() {
+  return treeSelectableEntries(activeMap()).find(entry => entry.id === selectedId) || null;
 }
 
 
@@ -2445,6 +3276,8 @@ function setLayerVisibleMaster(id) {
   l.visibleMaster = !l.visibleMaster;
   project.layers[id] = l;
   buildLayerControls();
+  renderSketchLayer();
+  renderGeometryElements();
   renderObjects();
   publishProject();
 }
@@ -2454,6 +3287,8 @@ function setLayerVisiblePlayer(id) {
   l.visiblePlayer = !l.visiblePlayer;
   project.layers[id] = l;
   buildLayerControls();
+  renderSketchLayer();
+  renderGeometryElements();
   renderObjects();
   publishProject();
 }
@@ -2463,6 +3298,8 @@ function toggleLayerLocked(id) {
   l.locked = !l.locked;
   project.layers[id] = l;
   buildLayerControls();
+  renderSketchLayer();
+  renderGeometryElements();
   renderObjects();
   publishProject();
 }
@@ -2581,22 +3418,35 @@ function normalizeProject() {
   });
 
   project.maps.forEach(m => {
+    m.elements = m.elements || [];
+    m.treeNodes = m.treeNodes || [];
     m.squaresW = m.squaresW || Math.round(m.width / grid());
     m.squaresH = m.squaresH || Math.round(m.height / grid());
     m.viewportX = m.viewportX || 0;
     m.viewportY = m.viewportY || 0;
     m.views = m.views || [];
     m.groups = m.groups || {};
+    m.elements = Array.isArray(m.elements) ? m.elements : [];
+    if (m.id === "blank_dungeon" && !m.elements.length && !(m.objects || []).length) {
+      m.elements = createDemoElements();
+    }
+    m.elements.forEach(normalizeElement);
+    m.layers = Array.isArray(m.layers) ? m.layers : [];
+    ensureSketchMapLayer(m);
     ensureSmartLayers(m);
 
     (m.objects || []).forEach(obj => {
       const asset = assetById(obj.assetId);
       obj.layer = migrateLayer(obj.layer, asset);
+      obj.layerId = obj.layer;
       if (typeof obj.visibleMaster !== "boolean") obj.visibleMaster = true;
       if (typeof obj.visiblePlayer !== "boolean") obj.visiblePlayer = true;
+      normalizeObjectElementFields(obj);
       if (typeof obj.opacity !== "number") obj.opacity = 1;
       obj.z = layerBaseZ(obj.layer) + (obj.z || 0) % 100;
     });
+
+    (m.elements || []).forEach(normalizeElementFields);
 
     rebuildGroupMeta(m);
     if (!m.playerView) {
@@ -2611,6 +3461,8 @@ function render() {
   buildLayerControls();
   applyCanvasSettings();
   renderSmartLayers();
+  renderSketchLayer();
+  renderGeometryElements();
   renderObjects();
   renderProperties();
   updateMapInfo();
@@ -3024,6 +3876,11 @@ function selectedObjects() {
   return activeMap().objects.filter(o => ids.has(o.id));
 }
 
+function selectedElements() {
+  const ids = new Set(getSelectionIds());
+  return (activeMap().elements || []).filter(element => ids.has(element.id));
+}
+
 function groupMembers(groupId) {
   if (!groupId) return [];
   return activeMap().objects.filter(o => o.groupId === groupId);
@@ -3317,11 +4174,12 @@ function toggleObjectSelection(id) {
 }
 
 function selectAllObjects() {
-  selectedIds = activeMap().objects.map(o => o.id);
+  selectedIds = activeMap().objects.map(o => o.id).concat((activeMap().elements || []).map(element => element.id));
   selectedId = selectedIds.length ? selectedIds[selectedIds.length - 1] : null;
   renderObjects();
+  renderGeometryElements();
   renderProperties();
-  status(`${selectedIds.length} oggetti selezionati`);
+  status(`${selectedIds.length} elementi selezionati`);
 }
 
 function renderMultiProperties(box, ids) {
@@ -3412,6 +4270,7 @@ function setSelectedLayer(layerId) {
 
 
 function renderObjects() {
+  renderGeometryElements();
   canvas.querySelectorAll(".mapObject").forEach(n => n.remove());
   canvas.querySelectorAll(".groupProxy").forEach(n => n.remove());
 
@@ -3646,102 +4505,128 @@ function renderProperties() {
   if (ids.length > 1) {
     const box = document.getElementById("properties");
     renderMultiProperties(box, ids);
+    buildTree();
     return;
   }
 
   const box = document.getElementById("properties");
-  const obj = activeMap().objects.find(o => o.id === selectedId);
-  if (!obj) {
+  const entry = selectedTreeEntry();
+  if (!entry) {
     box.innerHTML = `<p class="hint">Seleziona un oggetto sulla mappa.</p>`;
+    buildTree();
     return;
   }
 
-  const currentGroup = obj.groupId ? groupMembers(obj.groupId) : [];
+  const element = entry.element;
+  if (entry.source === "object") normalizeObjectElementFields(element);
+  else normalizeElementFields(element);
+
+  const hasLinkedMap = "linkedMapId" in element;
+  const hasLayer = "layerId" in element;
+  const pointGeometry = entry.source === "element" && element.geometry?.kind === "point";
+
   box.innerHTML = `
-    ${obj.groupId ? `<div class="groupBox"><h3>Oggetto in gruppo</h3><p class="small">${currentGroup.length} oggetti vincolati. Clic normale su un membro seleziona tutto il gruppo.</p><div class="buttonRow"><button id="selectGroupBtn">Seleziona gruppo</button><button id="ungroupBtn">Sciogli gruppo</button></div></div>` : ""}
-
-    <label>Nome <input data-prop="name" value="${esc(obj.name)}"></label>
-    <label>Tipo <input data-prop="type" value="${esc(obj.type || "")}"></label>
-
-    <label>Layer
-      <select data-prop="layer">${layerOptionsHtml(objectLayerId(obj))}</select>
-    </label>
-
-    <div class="row2">
-      <label>X quadretti <input data-prop-cells="x" type="number" step="0.5" value="${cellsFromPx(obj.x)}"></label>
-      <label>Y quadretti <input data-prop-cells="y" type="number" step="0.5" value="${cellsFromPx(obj.y)}"></label>
+    <div class="readonlyGrid">
+      <label>Id <input value="${esc(element.id || "")}" readonly></label>
+      <label>Tipo <input value="${esc(entry.type || element.type || "")}" readonly></label>
+      <label>Geometry kind <input value="${esc(entry.geometryKind || element.geometry?.kind || "rect")}" readonly></label>
     </div>
 
-    <div class="row2">
-      <label>Larghezza q. <input data-prop-cells="w" type="number" step="0.25" min="0.25" value="${cellsFromPx(obj.w)}"></label>
-      <label>Altezza q. <input data-prop-cells="h" type="number" step="0.25" min="0.25" value="${cellsFromPx(obj.h)}"></label>
-    </div>
+    <label>Nome <input data-element-prop="name" value="${esc(element.name || "")}"></label>
+    ${pointGeometry ? `
+      <div class="row2">
+        <label>X quadretti <input data-element-point="x" type="number" step="0.5" value="${cellsFromPx(element.geometry.x)}"></label>
+        <label>Y quadretti <input data-element-point="y" type="number" step="0.5" value="${cellsFromPx(element.geometry.y)}"></label>
+      </div>
+    ` : ""}
+    <label>Note master <textarea data-element-prop="notesMaster" rows="4">${esc(element.notesMaster || "")}</textarea></label>
+    <label>Note giocatore <textarea data-element-prop="notesPlayer" rows="4">${esc(element.notesPlayer || "")}</textarea></label>
+    <label><input data-element-prop="visibleToPlayers" type="checkbox" ${element.visibleToPlayers === true ? "checked" : ""}> Visibile ai giocatori</label>
 
-    <label>Rotazione: <b id="rotationValue">${obj.rotation || 0}°</b>
-      <input data-prop="rotation" type="range" min="-180" max="180" step="1" value="${obj.rotation || 0}">
-    </label>
-    <div class="buttonRow">
-      <button id="rotateLeftBtn">Ruota -15°</button>
-      <button id="rotateRightBtn">Ruota +15°</button>
-    </div>
+    ${hasLinkedMap ? `<label>Linked map id <input data-element-prop="linkedMapId" value="${esc(element.linkedMapId || "")}" placeholder="Nessuna mappa collegata"></label>` : ""}
+    ${hasLayer ? `<label>Layer id <input data-element-prop="layerId" value="${esc(element.layerId || "")}"></label>` : ""}
 
-    <label>Opacità: <b id="opacityValue">${Math.round((obj.opacity ?? 1)*100)}%</b>
-      <input data-prop="opacity" type="range" min="0" max="1" step="0.05" value="${obj.opacity ?? 1}">
-    </label>
-
-    <div class="buttonRow">
-      <button id="scaleDownBtn">Scala -</button>
-      <button id="scaleUpBtn">Scala +</button>
-    </div>
-    <div class="buttonRow">
-      <button id="fitGridBtn">Aggancia a griglia</button>
-      <button id="resetSizeBtn">Misura base</button>
-    </div>
-
-    <div class="buttonRow">
-      <button id="copyBtn">Copia</button>
-      <button id="pasteBtn">Incolla</button>
-    </div>
-
-    <div class="buttonRow">
-      <button id="duplicateBtn">Duplica</button>
-      <button id="deleteBtn" class="danger">Elimina</button>
-    </div>
-
-    <div class="buttonRow">
-      <button id="bringForwardBtn">Avanti</button>
-      <button id="sendBackBtn">Indietro</button>
-    </div>
-
-    <label><input data-prop="visibleMaster" type="checkbox" ${obj.visibleMaster !== false ? "checked" : ""}> Visibile Master</label>
-    <label><input data-prop="visiblePlayer" type="checkbox" ${obj.visiblePlayer !== false ? "checked" : ""}> Visibile Giocatore</label>
-    <label><input data-prop="locked" type="checkbox" ${obj.locked ? "checked" : ""}> Bloccato</label>
-
-    <label>Nota master <textarea data-prop="note" rows="3">${esc(obj.note || "")}</textarea></label>
-    <p class="small">Le misure sono in quadretti VTT. Con Magnete ON posizione e movimento si allineano alla griglia.</p>
+    ${entry.source === "object" ? `
+      <div class="legacyObjectTools">
+        <p class="small">Oggetto canvas legacy: posizione, scala e rotazione restano gestite dal canvas.</p>
+        <div class="buttonRow">
+          <button id="copyBtn">Copia</button>
+          <button id="duplicateBtn">Duplica</button>
+        </div>
+        <div class="buttonRow">
+          <button id="bringForwardBtn">Avanti</button>
+          <button id="deleteBtn" class="danger">Elimina</button>
+        </div>
+      </div>
+    ` : `
+      <div class="buttonRow">
+        <button id="deleteBtn" class="danger">Elimina</button>
+      </div>
+    `}
   `;
 
-  box.querySelectorAll("[data-prop]").forEach(input => input.oninput = input.onchange = () => updateProperty(input));
-  box.querySelectorAll("[data-prop-cells]").forEach(input => { input.oninput = () => updateCellProperty(input, false); input.onchange = () => updateCellProperty(input, true); });
+  box.querySelectorAll("[data-element-prop]").forEach(input => {
+    input.oninput = input.onchange = () => updateElementProperty(input, entry.source);
+  });
+  box.querySelectorAll("[data-element-point]").forEach(input => {
+    input.oninput = () => updateElementPointProperty(input, false);
+    input.onchange = () => updateElementPointProperty(input, true);
+  });
 
-  const selectGroupBtn = document.getElementById("selectGroupBtn");
-  if (selectGroupBtn) selectGroupBtn.onclick = () => { selectedIds = groupMembers(obj.groupId).map(o => o.id); selectedId = obj.id; renderObjects(); renderProperties(); };
-  const ungroupBtn = document.getElementById("ungroupBtn");
-  if (ungroupBtn) ungroupBtn.onclick = ungroupSelected;
+  const copyBtn = document.getElementById("copyBtn");
+  if (copyBtn) copyBtn.onclick = copySelected;
+  const duplicateBtn = document.getElementById("duplicateBtn");
+  if (duplicateBtn) duplicateBtn.onclick = duplicateSelected;
+  const deleteBtn = document.getElementById("deleteBtn");
+  if (deleteBtn) deleteBtn.onclick = deleteSelected;
+  const bringForwardBtn = document.getElementById("bringForwardBtn");
+  if (bringForwardBtn) bringForwardBtn.onclick = () => changeZ(10);
 
-  document.getElementById("rotateLeftBtn").onclick = () => rotateSelected(-15);
-  document.getElementById("rotateRightBtn").onclick = () => rotateSelected(15);
-  document.getElementById("scaleDownBtn").onclick = () => scaleSelected(-0.25);
-  document.getElementById("scaleUpBtn").onclick = () => scaleSelected(0.25);
-  document.getElementById("fitGridBtn").onclick = fitSelectedToGrid;
-  document.getElementById("resetSizeBtn").onclick = resetSelectedSize;
-  document.getElementById("copyBtn").onclick = copySelected;
-  document.getElementById("pasteBtn").onclick = pasteClipboard;
-  document.getElementById("duplicateBtn").onclick = duplicateSelected;
-  document.getElementById("deleteBtn").onclick = deleteSelected;
-  document.getElementById("bringForwardBtn").onclick = () => changeZ(10);
-  document.getElementById("sendBackBtn").onclick = () => changeZ(-10);
-  bindRotationButtons();
+  buildTree();
+}
+
+function updateElementProperty(input, source) {
+  const entry = selectedTreeEntry();
+  if (!entry) return;
+  const element = entry.element;
+  const key = input.dataset.elementProp;
+  const value = input.type === "checkbox" ? input.checked : input.value;
+
+  element[key] = key === "linkedMapId" && value === "" ? null : value;
+
+  if (source === "object") {
+    if (key === "notesMaster") element.note = element.notesMaster;
+    if (key === "visibleToPlayers") element.visiblePlayer = element.visibleToPlayers;
+    if (key === "layerId") {
+      element.layer = migrateLayer(element.layerId, assetById(element.assetId));
+      element.layerId = element.layer;
+      element.z = layerBaseZ(element.layer) + ((element.z || 0) % 100);
+      buildLayerControls();
+    }
+    normalizeObjectElementFields(element);
+  } else {
+    normalizeElementFields(element);
+  }
+
+  renderObjects();
+  renderGeometryElements();
+  buildTree();
+  publishProject();
+}
+
+function updateElementPointProperty(input, finalUpdate = false) {
+  const entry = selectedTreeEntry();
+  if (!entry || entry.source !== "element") return;
+  const element = entry.element;
+  if (!element.geometry || element.geometry.kind !== "point") return;
+
+  const numeric = Number(input.value);
+  if (!Number.isFinite(numeric)) return;
+  const value = numeric * grid();
+  element.geometry[input.dataset.elementPoint] = project.snap ? snapValue(value) : Math.round(value);
+  renderGeometryElements();
+  if (finalUpdate) renderProperties();
+  publishProject();
 }
 
 
@@ -3769,6 +4654,14 @@ function updateLiveXY(obj) {
   const y = document.querySelector('[data-prop-cells="y"]');
   if (x) x.value = cellsFromPx(obj.x);
   if (y) y.value = cellsFromPx(obj.y);
+}
+
+function updateLiveElementPoint(element) {
+  if (!element?.geometry || element.geometry.kind !== "point") return;
+  const x = document.querySelector('[data-element-point="x"]');
+  const y = document.querySelector('[data-element-point="y"]');
+  if (x) x.value = cellsFromPx(element.geometry.x);
+  if (y) y.value = cellsFromPx(element.geometry.y);
 }
 
 function updateProperty(input) {
@@ -3960,7 +4853,8 @@ function roundToStep(value, step) {
 
 function nudgeSelected(dx, dy) {
   const objs = selectedObjects();
-  if (!objs.length) return;
+  const elements = selectedElements();
+  if (!objs.length && !elements.length) return;
   const gids = [...new Set(objs.map(o => o.groupId).filter(Boolean))];
 
   if (gids.length === 1 && objs.every(o => o.groupId === gids[0])) {
@@ -3976,7 +4870,14 @@ function nudgeSelected(dx, dy) {
     });
   }
 
+  elements.forEach(element => {
+    if (element.geometry?.kind !== "point") return;
+    element.geometry.x = snapValue(element.geometry.x + dx);
+    element.geometry.y = snapValue(element.geometry.y + dy);
+  });
+
   renderObjects();
+  renderGeometryElements();
   renderProperties();
   publishProject();
 }
@@ -4074,6 +4975,8 @@ function deleteSelected() {
   const ids = new Set(getSelectionIds());
   if (!ids.size) return;
   const map = activeMap();
+  const beforeElements = (map.elements || []).length;
+  map.elements = (map.elements || []).filter(element => !ids.has(element.id));
   map.objects = map.objects.filter(o => !ids.has(o.id));
   if (map.groups) {
     Object.keys(map.groups).forEach(gid => {
@@ -4081,7 +4984,10 @@ function deleteSelected() {
     });
   }
   clearSelection();
-  status(ids.size > 1 ? `${ids.size} oggetti eliminati` : "Oggetto eliminato");
+  const removedElements = beforeElements - (map.elements || []).length;
+  status(removedElements
+    ? (removedElements > 1 ? `${removedElements} elementi eliminati` : "Elemento eliminato")
+    : (ids.size > 1 ? `${ids.size} oggetti eliminati` : "Oggetto eliminato"));
   render();
 }
 
@@ -4273,6 +5179,13 @@ document.addEventListener("keydown", e => {
     return;
   }
 
+  if (e.key === "Escape" && roomToolActive) {
+    e.preventDefault();
+    setRoomTool(false);
+    status("Strumento stanza disattivato");
+    return;
+  }
+
   if (e.key === "Escape" && selectedAssetId) {
     e.preventDefault();
     clearAssetBrush();
@@ -4315,13 +5228,17 @@ document.addEventListener("keydown", e => {
 // Pennello asset, anteprima con punto di aggancio, piazzamento su griglia e import PNG custom.
 
 function selectAssetBrush(assetId) {
+  setElementTool(null);
   setSmartWallTool(null);
+  setSketchTool(null);
+  setRoomTool(false);
   selectedAssetId = assetId;
   const asset = assetById(assetId);
   selectedId = null;
   updateBrushStatus();
   buildLibrary();
   renderObjects();
+  renderProperties();
   if (asset) status(`Pennello attivo: ${asset.name} — clicca su uno spazio vuoto per piazzarlo`);
 }
 
@@ -4334,12 +5251,105 @@ function clearAssetBrush() {
   hideBrushPreview();
 }
 
+function setElementTool(mode) {
+  elementToolMode = mode === "pin" || mode === "token" ? mode : null;
+  elementDragState = null;
+
+  if (elementToolMode) {
+    setSmartWallTool(null);
+    setSketchTool(null);
+    setRoomTool(false);
+    selectedAssetId = null;
+    brushDrawState = null;
+    hideBrushPreview();
+    clearSelection();
+  }
+
+  updateElementToolStatus();
+  updateBrushStatus();
+  renderObjects();
+  renderGeometryElements();
+  renderProperties();
+}
+
+function updateElementToolStatus() {
+  const pin = document.getElementById("btnPinTool");
+  const token = document.getElementById("btnTokenTool");
+  const off = document.getElementById("btnElementToolOff");
+  const box = document.getElementById("elementToolStatus");
+
+  if (pin) pin.classList.toggle("active", elementToolMode === "pin");
+  if (token) token.classList.toggle("active", elementToolMode === "token");
+  if (off) off.classList.toggle("active", !elementToolMode);
+  if (canvas) {
+    canvas.classList.toggle("pinToolMode", elementToolMode === "pin");
+    canvas.classList.toggle("tokenToolMode", elementToolMode === "token");
+  }
+  if (box) {
+    box.textContent = elementToolMode === "pin"
+      ? "Pin / Nota: clic sul canvas"
+      : elementToolMode === "token"
+        ? "Token: clic sul canvas"
+        : "Strumento: selezione";
+  }
+}
+
+function nextPointElementName(type) {
+  const prefix = type === "token" ? "Token" : "Nota";
+  const used = new Set((activeMap().elements || [])
+    .filter(element => element.type === type)
+    .map(element => element.name || ""));
+  let index = 1;
+  while (used.has(`${prefix} ${index}`)) index += 1;
+  return `${prefix} ${index}`;
+}
+
+function createPointElement(type, canvasPoint) {
+  const element = normalizeElement({
+    id:uid(),
+    type,
+    name:nextPointElementName(type),
+    geometry:{
+      kind:"point",
+      x:project.snap ? snapValue(canvasPoint.x) : Math.round(canvasPoint.x),
+      y:project.snap ? snapValue(canvasPoint.y) : Math.round(canvasPoint.y)
+    },
+    rotation:0,
+    visibleToPlayers:type === "token",
+    notesMaster:"",
+    notesPlayer:"",
+    linkedMapId:null,
+    style:type === "token"
+      ? { fill:"#526da8", stroke:"#101928", strokeWidth:5, opacity:1 }
+      : { fill:"#d1a35a", stroke:"#2a1808", strokeWidth:4, opacity:1, label:"!" },
+    layerId:type === "token" ? "token" : "note_master"
+  });
+
+  activeMap().elements = Array.isArray(activeMap().elements) ? activeMap().elements : [];
+  activeMap().elements.push(element);
+  setSingleSelection(element.id);
+  renderGeometryElements();
+  renderObjects();
+  renderProperties();
+  buildTree();
+  updatePlayerViewFromEditor(true);
+  publishProject();
+  status(type === "token" ? `Creato ${element.name}` : `Creata ${element.name}`);
+}
+
 function updateBrushStatus() {
   const box = document.getElementById("brushStatus");
   const asset = selectedAssetId ? assetById(selectedAssetId) : null;
   canvas.classList.toggle("brushMode", !!asset);
 
   if (!box) return;
+  if (elementToolMode) {
+    box.classList.add("active");
+    box.textContent = elementToolMode === "pin"
+      ? "Strumento Pin/Nota: clicca sul canvas per creare una nota."
+      : "Strumento Token: clicca sul canvas per creare una pedina.";
+    return;
+  }
   if (!asset) {
     box.classList.remove("active");
     box.textContent = "Pennello: nessun asset selezionato";
@@ -4630,12 +5640,30 @@ function addAssetAtPoint(assetId, point) {
 function handleCanvasPointerDown(e) {
   if (isPlayerWindow || project.mode !== "editor") return;
 
+  if (handleElementPointerDown(e)) return;
+  if (handleSketchPointerDown(e)) return;
+  if (handleRoomPointerDown(e)) return;
+
   if (e.target.closest && e.target.closest(".mapObject")) return;
   if (e.target.closest && e.target.closest(".groupProxy")) return;
   if (e.target.closest && e.target.closest("#viewportHandle")) return;
 
   if (smartToolMode) {
     handleSmartWallPointerDown(e);
+    return;
+  }
+
+  const p = canvasPointFromEvent(e);
+  if (elementToolMode) {
+    e.preventDefault();
+    e.stopPropagation();
+    createPointElement(elementToolMode, p);
+    return;
+  }
+
+  if (selectElementAtPoint(p, e)) {
+    e.preventDefault();
+    e.stopPropagation();
     return;
   }
 
@@ -4646,7 +5674,6 @@ function handleCanvasPointerDown(e) {
     e.preventDefault();
     e.stopPropagation();
 
-    const p = canvasPointFromEvent(e);
     const start = snapPointForAsset(p, asset);
 
     brushDrawState = {
@@ -4669,11 +5696,31 @@ function handleCanvasPointerDown(e) {
   }
 
   clearSelection();
+  renderGeometryElements();
   renderObjects();
   renderProperties();
 }
 
 function handleCanvasPointerMove(e) {
+  if (elementDragState) {
+    const element = elementById(elementDragState.id);
+    if (element?.geometry?.kind === "point") {
+      const scale = zoomScale();
+      const dx = (e.clientX - elementDragState.startX) / scale;
+      const dy = (e.clientY - elementDragState.startY) / scale;
+      element.geometry.x = project.snap ? snapValue(elementDragState.origin.x + dx) : Math.round(elementDragState.origin.x + dx);
+      element.geometry.y = project.snap ? snapValue(elementDragState.origin.y + dy) : Math.round(elementDragState.origin.y + dy);
+      renderGeometryElements();
+      updateLiveElementPoint(element);
+    }
+    e.preventDefault();
+    return;
+  }
+
+  if (handleElementPointerMove(e)) return;
+  if (handleRoomPointerMove(e)) return;
+  if (handleSketchPointerMove(e)) return;
+
   if (smartDragState) {
     handleSmartWallPointerMove(e);
     return;
@@ -4705,6 +5752,26 @@ function handleCanvasPointerMove(e) {
 }
 
 function finishBrushDraw(e) {
+  if (elementDragState) {
+    const state = elementDragState;
+    elementDragState = null;
+    renderProperties();
+    buildTree();
+    publishProject();
+    if (canvas.releasePointerCapture && state.pointerId !== undefined) {
+      try { canvas.releasePointerCapture(state.pointerId); } catch(err) {}
+    }
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    return;
+  }
+
+  if (finishElementDraw(e)) return;
+  if (finishRoomDraw(e)) return;
+  if (finishSketchDraw(e)) return;
+
   if (smartDragState) {
     finishSmartWallDraw(e);
     return;
@@ -4788,6 +5855,533 @@ function importPngAsset(file) {
 }
 
 
+// ===== 46_room_tools.js =====
+
+// Tool stanze geometry-based su project.maps[].elements.
+
+const ROOM_SHAPE_LABELS = {
+  rect:"Rettangolo",
+  square:"Quadrato",
+  circle:"Cerchio",
+  pentagon:"Pentagono",
+  hexagon:"Esagono"
+};
+
+function setRoomTool(active) {
+  roomToolActive = !!active;
+  roomDrawState = null;
+  clearRoomPreview();
+
+  if (roomToolActive) {
+    if (typeof elementToolMode !== "undefined") elementToolMode = null;
+    selectedAssetId = null;
+    smartToolMode = null;
+    if (typeof setSketchTool === "function") setSketchTool(null);
+    brushDrawState = null;
+    hideBrushPreview();
+    clearSelection();
+  }
+
+  updateBrushStatus();
+  updateRoomToolStatus();
+  updateSmartWallStatus();
+  renderGeometryElements();
+  renderObjects();
+  renderProperties();
+}
+
+function setRoomShape(shape) {
+  if (!ROOM_SHAPE_LABELS[shape]) return;
+  roomShape = shape;
+  if (!roomToolActive) roomToolActive = true;
+  updateRoomToolStatus();
+  status("Forma stanza: " + ROOM_SHAPE_LABELS[roomShape]);
+}
+
+function updateRoomToolStatus() {
+  const select = document.getElementById("roomShapeSelect");
+  const on = document.getElementById("btnRoomTool");
+  const off = document.getElementById("btnRoomToolOff");
+  const box = document.getElementById("roomToolStatus");
+
+  if (select) select.value = roomShape;
+  if (on) on.classList.toggle("active", roomToolActive);
+  if (off) off.classList.toggle("active", !roomToolActive);
+  if (canvas) canvas.classList.toggle("roomToolMode", roomToolActive);
+  if (box) box.textContent = roomToolActive ? "Stanza: " + ROOM_SHAPE_LABELS[roomShape] : "Stanza: spento";
+}
+
+function roomElements(map = activeMap()) {
+  map.elements = Array.isArray(map.elements) ? map.elements : [];
+  return map.elements.filter(element => element.type === "room");
+}
+
+function nextRoomName(map = activeMap()) {
+  const used = new Set(roomElements(map).map(element => element.name));
+  let index = roomElements(map).length + 1;
+  while (used.has("Stanza " + index)) index += 1;
+  return "Stanza " + index;
+}
+
+function createRoomGeometryFromBox(shape, box) {
+  const rawW = Math.abs(box.x2 - box.x1);
+  const rawH = Math.abs(box.y2 - box.y1);
+  const minSize = snapStep();
+  let width = Math.max(minSize, rawW);
+  let height = Math.max(minSize, rawH);
+
+  if (shape === "square") {
+    const side = Math.max(width, height);
+    const x = box.x2 < box.x1 ? box.x1 - side : box.x1;
+    const y = box.y2 < box.y1 ? box.y1 - side : box.y1;
+    return createRectGeometry(x, y, side, side);
+  }
+
+  const x = Math.min(box.x1, box.x2);
+  const y = Math.min(box.y1, box.y2);
+  if (shape === "rect") return createRectGeometry(x, y, width, height);
+
+  const cx = x + width / 2;
+  const cy = y + height / 2;
+  const radius = Math.max(minSize / 2, Math.min(width, height) / 2);
+  if (shape === "circle") return createCircleGeometry(cx, cy, radius);
+  if (shape === "pentagon") return createPentagonGeometry(cx, cy, radius);
+  if (shape === "hexagon") return createHexagonGeometry(cx, cy, radius);
+  return createRectGeometry(x, y, width, height);
+}
+
+function createRoomElement(shape, geometry) {
+  return {
+    id:uid(),
+    type:"room",
+    name:nextRoomName(),
+    geometry,
+    rotation:0,
+    visibleToPlayers:false,
+    notesMaster:"",
+    notesPlayer:"",
+    linkedMapId:null,
+    style:{
+      fill:"rgba(188,191,181,.9)",
+      stroke:"#20231f",
+      strokeWidth:5,
+      opacity:1
+    },
+    layerId:"architettura"
+  };
+}
+
+function handleRoomPointerDown(e) {
+  if (!roomToolActive || isPlayerWindow || project.mode !== "editor") return false;
+  if (e.target.closest && (e.target.closest(".mapObject") || e.target.closest(".geometryElement") || e.target.closest(".groupProxy") || e.target.closest("#viewportHandle"))) return false;
+
+  e.preventDefault();
+  e.stopPropagation();
+
+  const point = canvasPointFromEvent(e);
+  const start = {
+    x:project.snap ? snapValue(point.x) : Math.round(point.x),
+    y:project.snap ? snapValue(point.y) : Math.round(point.y)
+  };
+  roomDrawState = {
+    pointerId:e.pointerId,
+    shape:roomShape,
+    start,
+    current:start
+  };
+  if (canvas.setPointerCapture) {
+    try { canvas.setPointerCapture(e.pointerId); } catch(err) {}
+  }
+  renderRoomPreview();
+  return true;
+}
+
+function handleRoomPointerMove(e) {
+  if (!roomDrawState) return false;
+  const point = canvasPointFromEvent(e);
+  roomDrawState.current = {
+    x:project.snap ? snapValue(point.x) : Math.round(point.x),
+    y:project.snap ? snapValue(point.y) : Math.round(point.y)
+  };
+  renderRoomPreview();
+  e.preventDefault();
+  return true;
+}
+
+function finishRoomDraw(e) {
+  if (!roomDrawState) return false;
+  const state = roomDrawState;
+  roomDrawState = null;
+  clearRoomPreview();
+
+  const geometry = createRoomGeometryFromBox(state.shape, {
+    x1:state.start.x,
+    y1:state.start.y,
+    x2:state.current.x,
+    y2:state.current.y
+  });
+  const element = createRoomElement(state.shape, geometry);
+  activeMap().elements.push(element);
+  setSingleSelection(element.id);
+  render();
+  status("Creata: " + element.name);
+
+  if (canvas.releasePointerCapture && state.pointerId !== undefined) {
+    try { canvas.releasePointerCapture(state.pointerId); } catch(err) {}
+  }
+  if (e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+  return true;
+}
+
+function renderRoomPreview() {
+  clearRoomPreview();
+  if (!roomDrawState) return;
+
+  const geometry = createRoomGeometryFromBox(roomDrawState.shape, {
+    x1:roomDrawState.start.x,
+    y1:roomDrawState.start.y,
+    x2:roomDrawState.current.x,
+    y2:roomDrawState.current.y
+  });
+  const previewElement = createRoomElement(roomDrawState.shape, geometry);
+  let layer = document.getElementById("roomPreviewLayer");
+  if (!layer) {
+    layer = document.createElementNS(SVG_NS, "svg");
+    layer.id = "roomPreviewLayer";
+    layer.classList.add("elementLayer", "roomPreviewLayer");
+    canvas.insertBefore(layer, viewportLayer);
+  }
+  const map = activeMap();
+  layer.setAttribute("viewBox", `0 0 ${map.width} ${map.height}`);
+  layer.setAttribute("width", map.width);
+  layer.setAttribute("height", map.height);
+  layer.innerHTML = "";
+  const node = renderGeometryElementNode(previewElement);
+  node.classList.add("roomPreview");
+  layer.appendChild(node);
+}
+
+function clearRoomPreview() {
+  const layer = document.getElementById("roomPreviewLayer");
+  if (layer) layer.innerHTML = "";
+}
+
+
+// ===== 47_sketch_layer.js =====
+
+// Strumento schizzo libero: salva tratti come Element type="sketchStroke"
+// con geometry kind="polyline", separati dagli oggetti giocabili.
+
+const SKETCH_LAYER_ID = "layer-sketch";
+const SKETCH_MIN_POINT_DISTANCE = 3;
+const SKETCH_ERASER_DISTANCE = 14;
+
+function ensureSketchMapLayer(map = activeMap()) {
+  if (!map) return null;
+  map.elements = Array.isArray(map.elements) ? map.elements : [];
+  map.layers = Array.isArray(map.layers) ? map.layers : [];
+
+  let layer = map.layers.find(l => l.id === SKETCH_LAYER_ID);
+  if (!layer) {
+    layer = {
+      id: SKETCH_LAYER_ID,
+      name: "Sketch Layer",
+      type: "sketch",
+      visible: true,
+      locked: false
+    };
+    map.layers.push(layer);
+  }
+
+  return layer;
+}
+
+function sketchLayerState() {
+  ensureLayers();
+  return layerState(SKETCH_LAYER_ID);
+}
+
+function sketchVisibleForMaster(element) {
+  return element.visibleMaster !== false && sketchLayerState().visibleMaster !== false;
+}
+
+function sketchVisibleForPlayer(element) {
+  return element.visibleToPlayers !== false && sketchLayerState().visiblePlayer !== false;
+}
+
+function sketchElementVisible(element) {
+  if (project.mode === "play" || isPlayerWindow) return sketchVisibleForPlayer(element);
+  return sketchVisibleForMaster(element);
+}
+
+function setSketchTool(mode) {
+  activeSketchTool = mode;
+  activeSketchDrawState = null;
+
+  if (mode) {
+    setRoomTool(false);
+    selectedAssetId = null;
+    smartToolMode = null;
+    brushDrawState = null;
+    sketchToolMode = null;
+    sketchDrawState = null;
+    hideBrushPreview();
+  }
+
+  canvas.classList.toggle("sketchPencilMode", mode === "pencil");
+  canvas.classList.toggle("sketchEraserMode", mode === "eraser");
+
+  const pencil = document.getElementById("btnSketchPencil");
+  const eraser = document.getElementById("btnSketchEraser");
+  const off = document.getElementById("btnSketchOff");
+  if (pencil) pencil.classList.toggle("active", mode === "pencil");
+  if (eraser) eraser.classList.toggle("active", mode === "eraser");
+  if (off) off.classList.toggle("active", !mode);
+
+  const box = document.getElementById("sketchStatus");
+  if (box) {
+    box.textContent = mode === "pencil"
+      ? "Schizzo: matita attiva"
+      : mode === "eraser"
+        ? "Schizzo: gomma attiva"
+        : "Schizzo: spento";
+  }
+
+  updateBrushStatus();
+  buildLibrary();
+  updateSmartWallStatus();
+}
+
+function sketchPointFromEvent(e) {
+  const point = canvasPointFromEvent(e);
+  return {
+    x: Math.round(point.x),
+    y: Math.round(point.y)
+  };
+}
+
+function createSketchStroke(points) {
+  ensureSketchMapLayer();
+  return {
+    id: "sketch_" + uid(),
+    type: "sketchStroke",
+    name: "Tratto schizzo",
+    geometry: {
+      kind: "polyline",
+      points: points.map(point => ({
+        x: Math.round(point.x),
+        y: Math.round(point.y)
+      }))
+    },
+    rotation: 0,
+    visibleToPlayers: true,
+    visibleMaster: true,
+    notesMaster: "",
+    notesPlayer: "",
+    linkedMapId: null,
+    style: {
+      stroke: "#2c241c",
+      strokeWidth: 5,
+      opacity: 0.86,
+      lineCap: "round",
+      lineJoin: "round"
+    },
+    layerId: SKETCH_LAYER_ID
+  };
+}
+
+function handleSketchPointerDown(e) {
+  if (isPlayerWindow || project.mode !== "editor" || !activeSketchTool) return false;
+  if (e.target.closest && e.target.closest(".mapObject")) return false;
+  if (e.target.closest && e.target.closest(".mapElement")) return false;
+  if (e.target.closest && e.target.closest(".groupProxy")) return false;
+  if (e.target.closest && e.target.closest("#viewportHandle")) return false;
+
+  e.preventDefault();
+  e.stopPropagation();
+
+  const point = sketchPointFromEvent(e);
+
+  if (activeSketchTool === "eraser") {
+    eraseSketchStrokeAtPoint(point);
+    return true;
+  }
+
+  activeSketchDrawState = {
+    points: [point],
+    pointerId: e.pointerId
+  };
+
+  if (canvas.setPointerCapture) {
+    try { canvas.setPointerCapture(e.pointerId); } catch(err) {}
+  }
+
+  renderSketchLayer();
+  return true;
+}
+
+function handleSketchPointerMove(e) {
+  if (!activeSketchDrawState) return false;
+
+  const point = sketchPointFromEvent(e);
+  const last = activeSketchDrawState.points[activeSketchDrawState.points.length - 1];
+  const dx = point.x - last.x;
+  const dy = point.y - last.y;
+
+  if (Math.sqrt(dx * dx + dy * dy) >= SKETCH_MIN_POINT_DISTANCE) {
+    activeSketchDrawState.points.push(point);
+    renderSketchLayer();
+  }
+
+  e.preventDefault();
+  return true;
+}
+
+function finishSketchDraw(e) {
+  if (!activeSketchDrawState) return false;
+
+  const state = activeSketchDrawState;
+  activeSketchDrawState = null;
+
+  if (state.points.length >= 2) {
+    const map = activeMap();
+    map.elements.push(createSketchStroke(state.points));
+    renderSketchLayer();
+    publishProject();
+    status("Tratto schizzo salvato");
+  } else {
+    renderSketchLayer();
+  }
+
+  if (canvas.releasePointerCapture && state.pointerId !== undefined) {
+    try { canvas.releasePointerCapture(state.pointerId); } catch(err) {}
+  }
+
+  if (e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  return true;
+}
+
+function eraseSketchStrokeAtPoint(point) {
+  const map = activeMap();
+  ensureSketchMapLayer(map);
+  const target = findSketchStrokeAtPoint(point, map.elements);
+  if (!target) {
+    status("Nessun tratto schizzo vicino alla gomma");
+    return;
+  }
+
+  map.elements = map.elements.filter(element => element.id !== target.id);
+  renderSketchLayer();
+  publishProject();
+  status("Tratto schizzo cancellato");
+}
+
+function findSketchStrokeAtPoint(point, elements) {
+  let closest = null;
+  let closestDistance = Infinity;
+
+  (elements || []).forEach(element => {
+    if (element.type !== "sketchStroke" || !isPolylineGeometry(element.geometry)) return;
+    if (!sketchVisibleForMaster(element)) return;
+
+    const distance = sketchDistanceToPolyline(point, element.geometry.points);
+    const strokeWidth = Number(element.style && element.style.strokeWidth || 5);
+    const threshold = Math.max(SKETCH_ERASER_DISTANCE, strokeWidth + 8);
+    if (distance <= threshold && distance < closestDistance) {
+      closest = element;
+      closestDistance = distance;
+    }
+  });
+
+  return closest;
+}
+
+function sketchDistanceToPolyline(point, points) {
+  if (!Array.isArray(points) || points.length < 2) return Infinity;
+  let min = Infinity;
+
+  for (let i = 1; i < points.length; i += 1) {
+    min = Math.min(min, sketchDistanceToSegment(point, points[i - 1], points[i]));
+  }
+
+  return min;
+}
+
+function sketchDistanceToSegment(point, a, b) {
+  const ax = Number(a.x) || 0;
+  const ay = Number(a.y) || 0;
+  const bx = Number(b.x) || 0;
+  const by = Number(b.y) || 0;
+  const px = Number(point.x) || 0;
+  const py = Number(point.y) || 0;
+  const dx = bx - ax;
+  const dy = by - ay;
+
+  if (dx === 0 && dy === 0) {
+    const sx = px - ax;
+    const sy = py - ay;
+    return Math.sqrt(sx * sx + sy * sy);
+  }
+
+  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)));
+  const x = ax + t * dx;
+  const y = ay + t * dy;
+  const sx = px - x;
+  const sy = py - y;
+  return Math.sqrt(sx * sx + sy * sy);
+}
+
+function renderSketchLayer() {
+  if (!sketchLayer) return;
+  const map = activeMap();
+  if (!map) return;
+  ensureSketchMapLayer(map);
+
+  sketchLayer.innerHTML = "";
+  sketchLayer.style.width = map.width + "px";
+  sketchLayer.style.height = map.height + "px";
+
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("class", "sketchSvg");
+  svg.setAttribute("viewBox", `0 0 ${map.width} ${map.height}`);
+  svg.setAttribute("width", String(map.width));
+  svg.setAttribute("height", String(map.height));
+
+  (map.elements || []).forEach(element => {
+    if (element.type !== "sketchStroke" || !isPolylineGeometry(element.geometry)) return;
+    if (!sketchElementVisible(element)) return;
+    appendSketchPolyline(svg, element, false);
+  });
+
+  if (activeSketchDrawState && activeSketchDrawState.points.length) {
+    appendSketchPolyline(svg, createSketchStroke(activeSketchDrawState.points), true);
+  }
+
+  sketchLayer.appendChild(svg);
+}
+
+function appendSketchPolyline(svg, element, preview) {
+  const polyline = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+  const style = element.style || {};
+  const points = element.geometry.points.map(point => `${Math.round(point.x)},${Math.round(point.y)}`).join(" ");
+
+  polyline.setAttribute("points", points);
+  polyline.setAttribute("class", "sketchStroke" + (preview ? " preview" : "") + (element.visibleToPlayers === false ? " hiddenPlayer" : ""));
+  polyline.setAttribute("stroke", String(style.stroke || "#2c241c"));
+  polyline.setAttribute("stroke-width", String(style.strokeWidth || 5));
+  polyline.setAttribute("opacity", String(style.opacity ?? 0.86));
+  polyline.setAttribute("data-element-id", element.id);
+  svg.appendChild(polyline);
+}
+
+
 // ===== 50_storage_settings.js =====
 
 // Gilda Map Builder MVP 0.4
@@ -4847,6 +6441,7 @@ function setGridSize(value) {
     o.w = Math.round(o.w * factor);
     o.h = Math.round(o.h * factor);
   });
+  (map.elements || []).forEach(element => scaleElementGeometry(element.geometry, factor));
 
   map.viewportX = Math.round((map.viewportX || 0) * factor);
   map.viewportY = Math.round((map.viewportY || 0) * factor);
@@ -5123,6 +6718,8 @@ function setSmartBrushPreset(preset) {
 }
 
 function setSmartWallTool(mode) {
+  if (mode) setSketchTool(null);
+  if (mode) setRoomTool(false);
   smartToolMode = mode;
   smartDragState = null;
   if (mode) {
@@ -5528,6 +7125,8 @@ document.getElementById("btnNewMap").onclick = () => {
     views:[],
     groups:{},
     smartLayers:[],
+    elements:[],
+    layers:[],
     objects:[]
   };
   project.maps.push(m);
@@ -5570,6 +7169,16 @@ document.getElementById("btnExitPlay").onclick = enterEditorMode;
 document.getElementById("btnSmartWallDraw").onclick = () => setSmartWallTool("draw");
 document.getElementById("btnSmartWallErase").onclick = () => setSmartWallTool("erase");
 document.getElementById("btnSmartWallOff").onclick = () => setSmartWallTool(null);
+document.getElementById("btnSketchPencil").onclick = () => setSketchTool("pencil");
+document.getElementById("btnSketchEraser").onclick = () => setSketchTool("eraser");
+document.getElementById("btnSketchOff").onclick = () => setSketchTool(null);
+document.getElementById("btnRoomTool").onclick = () => setRoomTool(true);
+document.getElementById("btnRoomToolOff").onclick = () => setRoomTool(false);
+document.getElementById("roomShapeSelect").onchange = e => setRoomShape(e.target.value);
+document.getElementById("btnCorridorTool").onclick = () => setElementTool("corridor");
+document.getElementById("btnDoorTool").onclick = () => setElementTool("door");
+document.getElementById("btnStairTool").onclick = () => setElementTool("stair");
+document.getElementById("btnElementToolOff").onclick = () => setElementTool(null);
 document.getElementById("smartBrushKind").onchange = e => setSmartBrushKind(e.target.value);
 document.getElementById("smartBrushPreset").onchange = e => setSmartBrushPreset(e.target.value);
 document.getElementById("zoom").oninput = applyZoom;
@@ -5624,6 +7233,9 @@ if (isPlayerWindow) {
 buildLibrary();
 buildLayerControls();
 syncTopControls();
+updateRoomToolStatus();
+updateSketchStatus();
+updateElementToolStatus();
 applyZoom();
 render();
 applyModeUI();
@@ -5647,7 +7259,7 @@ function handleCanvasDrop(e) {
 
 canvas.addEventListener("pointerdown", handleCanvasPointerDown);
 canvas.addEventListener("pointermove", handleCanvasPointerMove);
-canvas.addEventListener("pointerleave", e => { if (!brushDrawState) hideBrushPreview(); });
+canvas.addEventListener("pointerleave", e => { if (!brushDrawState && !sketchDrawState && !activeSketchDrawState && !roomDrawState) hideBrushPreview(); });
 canvas.addEventListener("pointerup", finishBrushDraw);
 document.addEventListener("pointerup", finishBrushDraw);
 canvas.addEventListener("dragover", handleCanvasDragOver);

@@ -223,8 +223,11 @@ function setSmartBrushPreset(preset) {
 }
 
 function setSmartWallTool(mode) {
+  if (mode) setSketchTool(null);
+  if (mode) setRoomTool(false);
   smartToolMode = mode;
   smartDragState = null;
+  if (mode) elementToolMode = null;
   if (mode) {
     selectedAssetId = null;
     brushDrawState = null;

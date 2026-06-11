@@ -15,6 +15,11 @@ function selectedObjects() {
   return activeMap().objects.filter(o => ids.has(o.id));
 }
 
+function selectedElements() {
+  const ids = new Set(getSelectionIds());
+  return (activeMap().elements || []).filter(element => ids.has(element.id));
+}
+
 function groupMembers(groupId) {
   if (!groupId) return [];
   return activeMap().objects.filter(o => o.groupId === groupId);
@@ -308,11 +313,12 @@ function toggleObjectSelection(id) {
 }
 
 function selectAllObjects() {
-  selectedIds = activeMap().objects.map(o => o.id);
+  selectedIds = activeMap().objects.map(o => o.id).concat((activeMap().elements || []).map(element => element.id));
   selectedId = selectedIds.length ? selectedIds[selectedIds.length - 1] : null;
   renderObjects();
+  renderGeometryElements();
   renderProperties();
-  status(`${selectedIds.length} oggetti selezionati`);
+  status(`${selectedIds.length} elementi selezionati`);
 }
 
 function renderMultiProperties(box, ids) {
@@ -403,6 +409,7 @@ function setSelectedLayer(layerId) {
 
 
 function renderObjects() {
+  renderGeometryElements();
   canvas.querySelectorAll(".mapObject").forEach(n => n.remove());
   canvas.querySelectorAll(".groupProxy").forEach(n => n.remove());
 
@@ -637,102 +644,128 @@ function renderProperties() {
   if (ids.length > 1) {
     const box = document.getElementById("properties");
     renderMultiProperties(box, ids);
+    buildTree();
     return;
   }
 
   const box = document.getElementById("properties");
-  const obj = activeMap().objects.find(o => o.id === selectedId);
-  if (!obj) {
+  const entry = selectedTreeEntry();
+  if (!entry) {
     box.innerHTML = `<p class="hint">Seleziona un oggetto sulla mappa.</p>`;
+    buildTree();
     return;
   }
 
-  const currentGroup = obj.groupId ? groupMembers(obj.groupId) : [];
+  const element = entry.element;
+  if (entry.source === "object") normalizeObjectElementFields(element);
+  else normalizeElementFields(element);
+
+  const hasLinkedMap = "linkedMapId" in element;
+  const hasLayer = "layerId" in element;
+  const pointGeometry = entry.source === "element" && element.geometry?.kind === "point";
+
   box.innerHTML = `
-    ${obj.groupId ? `<div class="groupBox"><h3>Oggetto in gruppo</h3><p class="small">${currentGroup.length} oggetti vincolati. Clic normale su un membro seleziona tutto il gruppo.</p><div class="buttonRow"><button id="selectGroupBtn">Seleziona gruppo</button><button id="ungroupBtn">Sciogli gruppo</button></div></div>` : ""}
-
-    <label>Nome <input data-prop="name" value="${esc(obj.name)}"></label>
-    <label>Tipo <input data-prop="type" value="${esc(obj.type || "")}"></label>
-
-    <label>Layer
-      <select data-prop="layer">${layerOptionsHtml(objectLayerId(obj))}</select>
-    </label>
-
-    <div class="row2">
-      <label>X quadretti <input data-prop-cells="x" type="number" step="0.5" value="${cellsFromPx(obj.x)}"></label>
-      <label>Y quadretti <input data-prop-cells="y" type="number" step="0.5" value="${cellsFromPx(obj.y)}"></label>
+    <div class="readonlyGrid">
+      <label>Id <input value="${esc(element.id || "")}" readonly></label>
+      <label>Tipo <input value="${esc(entry.type || element.type || "")}" readonly></label>
+      <label>Geometry kind <input value="${esc(entry.geometryKind || element.geometry?.kind || "rect")}" readonly></label>
     </div>
 
-    <div class="row2">
-      <label>Larghezza q. <input data-prop-cells="w" type="number" step="0.25" min="0.25" value="${cellsFromPx(obj.w)}"></label>
-      <label>Altezza q. <input data-prop-cells="h" type="number" step="0.25" min="0.25" value="${cellsFromPx(obj.h)}"></label>
-    </div>
+    <label>Nome <input data-element-prop="name" value="${esc(element.name || "")}"></label>
+    ${pointGeometry ? `
+      <div class="row2">
+        <label>X quadretti <input data-element-point="x" type="number" step="0.5" value="${cellsFromPx(element.geometry.x)}"></label>
+        <label>Y quadretti <input data-element-point="y" type="number" step="0.5" value="${cellsFromPx(element.geometry.y)}"></label>
+      </div>
+    ` : ""}
+    <label>Note master <textarea data-element-prop="notesMaster" rows="4">${esc(element.notesMaster || "")}</textarea></label>
+    <label>Note giocatore <textarea data-element-prop="notesPlayer" rows="4">${esc(element.notesPlayer || "")}</textarea></label>
+    <label><input data-element-prop="visibleToPlayers" type="checkbox" ${element.visibleToPlayers === true ? "checked" : ""}> Visibile ai giocatori</label>
 
-    <label>Rotazione: <b id="rotationValue">${obj.rotation || 0}°</b>
-      <input data-prop="rotation" type="range" min="-180" max="180" step="1" value="${obj.rotation || 0}">
-    </label>
-    <div class="buttonRow">
-      <button id="rotateLeftBtn">Ruota -15°</button>
-      <button id="rotateRightBtn">Ruota +15°</button>
-    </div>
+    ${hasLinkedMap ? `<label>Linked map id <input data-element-prop="linkedMapId" value="${esc(element.linkedMapId || "")}" placeholder="Nessuna mappa collegata"></label>` : ""}
+    ${hasLayer ? `<label>Layer id <input data-element-prop="layerId" value="${esc(element.layerId || "")}"></label>` : ""}
 
-    <label>Opacità: <b id="opacityValue">${Math.round((obj.opacity ?? 1)*100)}%</b>
-      <input data-prop="opacity" type="range" min="0" max="1" step="0.05" value="${obj.opacity ?? 1}">
-    </label>
-
-    <div class="buttonRow">
-      <button id="scaleDownBtn">Scala -</button>
-      <button id="scaleUpBtn">Scala +</button>
-    </div>
-    <div class="buttonRow">
-      <button id="fitGridBtn">Aggancia a griglia</button>
-      <button id="resetSizeBtn">Misura base</button>
-    </div>
-
-    <div class="buttonRow">
-      <button id="copyBtn">Copia</button>
-      <button id="pasteBtn">Incolla</button>
-    </div>
-
-    <div class="buttonRow">
-      <button id="duplicateBtn">Duplica</button>
-      <button id="deleteBtn" class="danger">Elimina</button>
-    </div>
-
-    <div class="buttonRow">
-      <button id="bringForwardBtn">Avanti</button>
-      <button id="sendBackBtn">Indietro</button>
-    </div>
-
-    <label><input data-prop="visibleMaster" type="checkbox" ${obj.visibleMaster !== false ? "checked" : ""}> Visibile Master</label>
-    <label><input data-prop="visiblePlayer" type="checkbox" ${obj.visiblePlayer !== false ? "checked" : ""}> Visibile Giocatore</label>
-    <label><input data-prop="locked" type="checkbox" ${obj.locked ? "checked" : ""}> Bloccato</label>
-
-    <label>Nota master <textarea data-prop="note" rows="3">${esc(obj.note || "")}</textarea></label>
-    <p class="small">Le misure sono in quadretti VTT. Con Magnete ON posizione e movimento si allineano alla griglia.</p>
+    ${entry.source === "object" ? `
+      <div class="legacyObjectTools">
+        <p class="small">Oggetto canvas legacy: posizione, scala e rotazione restano gestite dal canvas.</p>
+        <div class="buttonRow">
+          <button id="copyBtn">Copia</button>
+          <button id="duplicateBtn">Duplica</button>
+        </div>
+        <div class="buttonRow">
+          <button id="bringForwardBtn">Avanti</button>
+          <button id="deleteBtn" class="danger">Elimina</button>
+        </div>
+      </div>
+    ` : `
+      <div class="buttonRow">
+        <button id="deleteBtn" class="danger">Elimina</button>
+      </div>
+    `}
   `;
 
-  box.querySelectorAll("[data-prop]").forEach(input => input.oninput = input.onchange = () => updateProperty(input));
-  box.querySelectorAll("[data-prop-cells]").forEach(input => { input.oninput = () => updateCellProperty(input, false); input.onchange = () => updateCellProperty(input, true); });
+  box.querySelectorAll("[data-element-prop]").forEach(input => {
+    input.oninput = input.onchange = () => updateElementProperty(input, entry.source);
+  });
+  box.querySelectorAll("[data-element-point]").forEach(input => {
+    input.oninput = () => updateElementPointProperty(input, false);
+    input.onchange = () => updateElementPointProperty(input, true);
+  });
 
-  const selectGroupBtn = document.getElementById("selectGroupBtn");
-  if (selectGroupBtn) selectGroupBtn.onclick = () => { selectedIds = groupMembers(obj.groupId).map(o => o.id); selectedId = obj.id; renderObjects(); renderProperties(); };
-  const ungroupBtn = document.getElementById("ungroupBtn");
-  if (ungroupBtn) ungroupBtn.onclick = ungroupSelected;
+  const copyBtn = document.getElementById("copyBtn");
+  if (copyBtn) copyBtn.onclick = copySelected;
+  const duplicateBtn = document.getElementById("duplicateBtn");
+  if (duplicateBtn) duplicateBtn.onclick = duplicateSelected;
+  const deleteBtn = document.getElementById("deleteBtn");
+  if (deleteBtn) deleteBtn.onclick = deleteSelected;
+  const bringForwardBtn = document.getElementById("bringForwardBtn");
+  if (bringForwardBtn) bringForwardBtn.onclick = () => changeZ(10);
 
-  document.getElementById("rotateLeftBtn").onclick = () => rotateSelected(-15);
-  document.getElementById("rotateRightBtn").onclick = () => rotateSelected(15);
-  document.getElementById("scaleDownBtn").onclick = () => scaleSelected(-0.25);
-  document.getElementById("scaleUpBtn").onclick = () => scaleSelected(0.25);
-  document.getElementById("fitGridBtn").onclick = fitSelectedToGrid;
-  document.getElementById("resetSizeBtn").onclick = resetSelectedSize;
-  document.getElementById("copyBtn").onclick = copySelected;
-  document.getElementById("pasteBtn").onclick = pasteClipboard;
-  document.getElementById("duplicateBtn").onclick = duplicateSelected;
-  document.getElementById("deleteBtn").onclick = deleteSelected;
-  document.getElementById("bringForwardBtn").onclick = () => changeZ(10);
-  document.getElementById("sendBackBtn").onclick = () => changeZ(-10);
-  bindRotationButtons();
+  buildTree();
+}
+
+function updateElementProperty(input, source) {
+  const entry = selectedTreeEntry();
+  if (!entry) return;
+  const element = entry.element;
+  const key = input.dataset.elementProp;
+  const value = input.type === "checkbox" ? input.checked : input.value;
+
+  element[key] = key === "linkedMapId" && value === "" ? null : value;
+
+  if (source === "object") {
+    if (key === "notesMaster") element.note = element.notesMaster;
+    if (key === "visibleToPlayers") element.visiblePlayer = element.visibleToPlayers;
+    if (key === "layerId") {
+      element.layer = migrateLayer(element.layerId, assetById(element.assetId));
+      element.layerId = element.layer;
+      element.z = layerBaseZ(element.layer) + ((element.z || 0) % 100);
+      buildLayerControls();
+    }
+    normalizeObjectElementFields(element);
+  } else {
+    normalizeElementFields(element);
+  }
+
+  renderObjects();
+  renderGeometryElements();
+  buildTree();
+  publishProject();
+}
+
+function updateElementPointProperty(input, finalUpdate = false) {
+  const entry = selectedTreeEntry();
+  if (!entry || entry.source !== "element") return;
+  const element = entry.element;
+  if (!element.geometry || element.geometry.kind !== "point") return;
+
+  const numeric = Number(input.value);
+  if (!Number.isFinite(numeric)) return;
+  const value = numeric * grid();
+  element.geometry[input.dataset.elementPoint] = project.snap ? snapValue(value) : Math.round(value);
+  renderGeometryElements();
+  if (finalUpdate) renderProperties();
+  publishProject();
 }
 
 
@@ -760,6 +793,14 @@ function updateLiveXY(obj) {
   const y = document.querySelector('[data-prop-cells="y"]');
   if (x) x.value = cellsFromPx(obj.x);
   if (y) y.value = cellsFromPx(obj.y);
+}
+
+function updateLiveElementPoint(element) {
+  if (!element?.geometry || element.geometry.kind !== "point") return;
+  const x = document.querySelector('[data-element-point="x"]');
+  const y = document.querySelector('[data-element-point="y"]');
+  if (x) x.value = cellsFromPx(element.geometry.x);
+  if (y) y.value = cellsFromPx(element.geometry.y);
 }
 
 function updateProperty(input) {
@@ -951,7 +992,8 @@ function roundToStep(value, step) {
 
 function nudgeSelected(dx, dy) {
   const objs = selectedObjects();
-  if (!objs.length) return;
+  const elements = selectedElements();
+  if (!objs.length && !elements.length) return;
   const gids = [...new Set(objs.map(o => o.groupId).filter(Boolean))];
 
   if (gids.length === 1 && objs.every(o => o.groupId === gids[0])) {
@@ -967,7 +1009,14 @@ function nudgeSelected(dx, dy) {
     });
   }
 
+  elements.forEach(element => {
+    if (element.geometry?.kind !== "point") return;
+    element.geometry.x = snapValue(element.geometry.x + dx);
+    element.geometry.y = snapValue(element.geometry.y + dy);
+  });
+
   renderObjects();
+  renderGeometryElements();
   renderProperties();
   publishProject();
 }
@@ -1065,6 +1114,8 @@ function deleteSelected() {
   const ids = new Set(getSelectionIds());
   if (!ids.size) return;
   const map = activeMap();
+  const beforeElements = (map.elements || []).length;
+  map.elements = (map.elements || []).filter(element => !ids.has(element.id));
   map.objects = map.objects.filter(o => !ids.has(o.id));
   if (map.groups) {
     Object.keys(map.groups).forEach(gid => {
@@ -1072,7 +1123,10 @@ function deleteSelected() {
     });
   }
   clearSelection();
-  status(ids.size > 1 ? `${ids.size} oggetti eliminati` : "Oggetto eliminato");
+  const removedElements = beforeElements - (map.elements || []).length;
+  status(removedElements
+    ? (removedElements > 1 ? `${removedElements} elementi eliminati` : "Elemento eliminato")
+    : (ids.size > 1 ? `${ids.size} oggetti eliminati` : "Oggetto eliminato"));
   render();
 }
 
@@ -1261,6 +1315,13 @@ document.addEventListener("keydown", e => {
     e.preventDefault();
     setSmartWallTool(null);
     status("Smart Wall disattivato");
+    return;
+  }
+
+  if (e.key === "Escape" && roomToolActive) {
+    e.preventDefault();
+    setRoomTool(false);
+    status("Strumento stanza disattivato");
     return;
   }
 

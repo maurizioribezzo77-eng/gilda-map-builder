@@ -5,13 +5,17 @@
 // Pennello asset, anteprima con punto di aggancio, piazzamento su griglia e import PNG custom.
 
 function selectAssetBrush(assetId) {
+  setElementTool(null);
   setSmartWallTool(null);
+  setSketchTool(null);
+  setRoomTool(false);
   selectedAssetId = assetId;
   const asset = assetById(assetId);
   selectedId = null;
   updateBrushStatus();
   buildLibrary();
   renderObjects();
+  renderProperties();
   if (asset) status(`Pennello attivo: ${asset.name} — clicca su uno spazio vuoto per piazzarlo`);
 }
 
@@ -24,12 +28,105 @@ function clearAssetBrush() {
   hideBrushPreview();
 }
 
+function setElementTool(mode) {
+  elementToolMode = mode === "pin" || mode === "token" ? mode : null;
+  elementDragState = null;
+
+  if (elementToolMode) {
+    setSmartWallTool(null);
+    setSketchTool(null);
+    setRoomTool(false);
+    selectedAssetId = null;
+    brushDrawState = null;
+    hideBrushPreview();
+    clearSelection();
+  }
+
+  updateElementToolStatus();
+  updateBrushStatus();
+  renderObjects();
+  renderGeometryElements();
+  renderProperties();
+}
+
+function updateElementToolStatus() {
+  const pin = document.getElementById("btnPinTool");
+  const token = document.getElementById("btnTokenTool");
+  const off = document.getElementById("btnElementToolOff");
+  const box = document.getElementById("elementToolStatus");
+
+  if (pin) pin.classList.toggle("active", elementToolMode === "pin");
+  if (token) token.classList.toggle("active", elementToolMode === "token");
+  if (off) off.classList.toggle("active", !elementToolMode);
+  if (canvas) {
+    canvas.classList.toggle("pinToolMode", elementToolMode === "pin");
+    canvas.classList.toggle("tokenToolMode", elementToolMode === "token");
+  }
+  if (box) {
+    box.textContent = elementToolMode === "pin"
+      ? "Pin / Nota: clic sul canvas"
+      : elementToolMode === "token"
+        ? "Token: clic sul canvas"
+        : "Strumento: selezione";
+  }
+}
+
+function nextPointElementName(type) {
+  const prefix = type === "token" ? "Token" : "Nota";
+  const used = new Set((activeMap().elements || [])
+    .filter(element => element.type === type)
+    .map(element => element.name || ""));
+  let index = 1;
+  while (used.has(`${prefix} ${index}`)) index += 1;
+  return `${prefix} ${index}`;
+}
+
+function createPointElement(type, canvasPoint) {
+  const element = normalizeElement({
+    id:uid(),
+    type,
+    name:nextPointElementName(type),
+    geometry:{
+      kind:"point",
+      x:project.snap ? snapValue(canvasPoint.x) : Math.round(canvasPoint.x),
+      y:project.snap ? snapValue(canvasPoint.y) : Math.round(canvasPoint.y)
+    },
+    rotation:0,
+    visibleToPlayers:type === "token",
+    notesMaster:"",
+    notesPlayer:"",
+    linkedMapId:null,
+    style:type === "token"
+      ? { fill:"#526da8", stroke:"#101928", strokeWidth:5, opacity:1 }
+      : { fill:"#d1a35a", stroke:"#2a1808", strokeWidth:4, opacity:1, label:"!" },
+    layerId:type === "token" ? "token" : "note_master"
+  });
+
+  activeMap().elements = Array.isArray(activeMap().elements) ? activeMap().elements : [];
+  activeMap().elements.push(element);
+  setSingleSelection(element.id);
+  renderGeometryElements();
+  renderObjects();
+  renderProperties();
+  buildTree();
+  updatePlayerViewFromEditor(true);
+  publishProject();
+  status(type === "token" ? `Creato ${element.name}` : `Creata ${element.name}`);
+}
+
 function updateBrushStatus() {
   const box = document.getElementById("brushStatus");
   const asset = selectedAssetId ? assetById(selectedAssetId) : null;
   canvas.classList.toggle("brushMode", !!asset);
 
   if (!box) return;
+  if (elementToolMode) {
+    box.classList.add("active");
+    box.textContent = elementToolMode === "pin"
+      ? "Strumento Pin/Nota: clicca sul canvas per creare una nota."
+      : "Strumento Token: clicca sul canvas per creare una pedina.";
+    return;
+  }
   if (!asset) {
     box.classList.remove("active");
     box.textContent = "Pennello: nessun asset selezionato";
@@ -320,12 +417,30 @@ function addAssetAtPoint(assetId, point) {
 function handleCanvasPointerDown(e) {
   if (isPlayerWindow || project.mode !== "editor") return;
 
+  if (handleElementPointerDown(e)) return;
+  if (handleSketchPointerDown(e)) return;
+  if (handleRoomPointerDown(e)) return;
+
   if (e.target.closest && e.target.closest(".mapObject")) return;
   if (e.target.closest && e.target.closest(".groupProxy")) return;
   if (e.target.closest && e.target.closest("#viewportHandle")) return;
 
   if (smartToolMode) {
     handleSmartWallPointerDown(e);
+    return;
+  }
+
+  const p = canvasPointFromEvent(e);
+  if (elementToolMode) {
+    e.preventDefault();
+    e.stopPropagation();
+    createPointElement(elementToolMode, p);
+    return;
+  }
+
+  if (selectElementAtPoint(p, e)) {
+    e.preventDefault();
+    e.stopPropagation();
     return;
   }
 
@@ -336,7 +451,6 @@ function handleCanvasPointerDown(e) {
     e.preventDefault();
     e.stopPropagation();
 
-    const p = canvasPointFromEvent(e);
     const start = snapPointForAsset(p, asset);
 
     brushDrawState = {
@@ -359,11 +473,31 @@ function handleCanvasPointerDown(e) {
   }
 
   clearSelection();
+  renderGeometryElements();
   renderObjects();
   renderProperties();
 }
 
 function handleCanvasPointerMove(e) {
+  if (elementDragState) {
+    const element = elementById(elementDragState.id);
+    if (element?.geometry?.kind === "point") {
+      const scale = zoomScale();
+      const dx = (e.clientX - elementDragState.startX) / scale;
+      const dy = (e.clientY - elementDragState.startY) / scale;
+      element.geometry.x = project.snap ? snapValue(elementDragState.origin.x + dx) : Math.round(elementDragState.origin.x + dx);
+      element.geometry.y = project.snap ? snapValue(elementDragState.origin.y + dy) : Math.round(elementDragState.origin.y + dy);
+      renderGeometryElements();
+      updateLiveElementPoint(element);
+    }
+    e.preventDefault();
+    return;
+  }
+
+  if (handleElementPointerMove(e)) return;
+  if (handleRoomPointerMove(e)) return;
+  if (handleSketchPointerMove(e)) return;
+
   if (smartDragState) {
     handleSmartWallPointerMove(e);
     return;
@@ -395,6 +529,26 @@ function handleCanvasPointerMove(e) {
 }
 
 function finishBrushDraw(e) {
+  if (elementDragState) {
+    const state = elementDragState;
+    elementDragState = null;
+    renderProperties();
+    buildTree();
+    publishProject();
+    if (canvas.releasePointerCapture && state.pointerId !== undefined) {
+      try { canvas.releasePointerCapture(state.pointerId); } catch(err) {}
+    }
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    return;
+  }
+
+  if (finishElementDraw(e)) return;
+  if (finishRoomDraw(e)) return;
+  if (finishSketchDraw(e)) return;
+
   if (smartDragState) {
     finishSmartWallDraw(e);
     return;

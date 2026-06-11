@@ -57,6 +57,7 @@ function setGridSize(value) {
     o.w = Math.round(o.w * factor);
     o.h = Math.round(o.h * factor);
   });
+  (map.elements || []).forEach(element => scaleElementGeometry(element.geometry, factor));
 
   map.viewportX = Math.round((map.viewportX || 0) * factor);
   map.viewportY = Math.round((map.viewportY || 0) * factor);
