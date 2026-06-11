@@ -14,7 +14,7 @@ function handleCanvasDrop(e) {
 
 canvas.addEventListener("pointerdown", handleCanvasPointerDown);
 canvas.addEventListener("pointermove", handleCanvasPointerMove);
-canvas.addEventListener("pointerleave", e => { if (!brushDrawState) hideBrushPreview(); });
+canvas.addEventListener("pointerleave", e => { if (!brushDrawState && !sketchDrawState && !activeSketchDrawState && !roomDrawState) hideBrushPreview(); });
 canvas.addEventListener("pointerup", finishBrushDraw);
 document.addEventListener("pointerup", finishBrushDraw);
 canvas.addEventListener("dragover", handleCanvasDragOver);

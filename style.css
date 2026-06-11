@@ -114,6 +114,19 @@ h2 {
 .tree .node:hover { background:var(--panel2); }
 .tree .child { margin-left:14px; color:var(--muted); cursor:pointer; }
 .tree .activeMap { background:#3a2b16; color:var(--gold2); }
+.tree .treeFolder {
+  margin-top:4px;
+  color:#cdbd9a;
+  cursor:default;
+}
+.tree .treeElement {
+  margin-left:28px;
+}
+.tree .selectedTreeNode {
+  background:#51401f;
+  color:var(--gold2);
+  outline:1px solid rgba(240,217,154,.34);
+}
 
 .layerControls label {
   display:flex;
@@ -284,6 +297,22 @@ h2 {
   width:auto;
   margin-right:6px;
 }
+.properties input[readonly] {
+  color:#b9ad9a;
+  background:#181818;
+  border-color:#3f3f3f;
+}
+.readonlyGrid {
+  display:grid;
+  grid-template-columns:1fr;
+  gap:2px;
+  padding:6px 0 4px;
+}
+.legacyObjectTools {
+  border-top:1px solid var(--line);
+  margin-top:12px;
+  padding-top:8px;
+}
 .row2 {
   display:grid;
   grid-template-columns:1fr 1fr;
@@ -317,6 +346,152 @@ h2 {
   inset:0;
   pointer-events:none;
   z-index:15000;
+}
+
+.elementLayer {
+  position:absolute;
+  inset:0;
+  width:100%;
+  height:100%;
+  overflow:visible;
+  pointer-events:none;
+  z-index:17000;
+}
+
+.geometryElement {
+  pointer-events:none;
+}
+
+.geometryShape {
+  vector-effect:non-scaling-stroke;
+}
+
+.geometryElement.selected .geometryShape {
+  filter:drop-shadow(0 0 7px rgba(255, 211, 111, .95));
+  stroke:#ffd36f;
+  stroke-width:8;
+}
+
+.geometryElement.hiddenPlayer .geometryShape {
+  stroke-dasharray:14 8;
+}
+
+.geometryLabel {
+  fill:#181714;
+  font-size:42px;
+  font-weight:800;
+  text-anchor:middle;
+  dominant-baseline:middle;
+  pointer-events:none;
+  paint-order:stroke;
+  stroke:rgba(240, 217, 154, .72);
+  stroke-width:5px;
+}
+
+.roomElement {
+  position:absolute;
+  cursor:pointer;
+  user-select:none;
+}
+
+.roomElement svg {
+  display:block;
+  width:100%;
+  height:100%;
+  overflow:visible;
+  pointer-events:none;
+}
+
+.roomElement.selected {
+  outline:3px solid #ffd36f;
+  outline-offset:5px;
+  filter:drop-shadow(0 0 8px rgba(255, 211, 111, .9));
+}
+
+.roomElement.element-door {
+  filter:drop-shadow(0 1px 2px rgba(0,0,0,.55));
+}
+
+.roomElement.element-stair text {
+  font-family:Georgia, serif;
+  font-weight:800;
+}
+
+.canvas.elementToolMode {
+  cursor:crosshair;
+}
+
+.roomElement.hiddenPlayer::after {
+  content:"M";
+  position:absolute;
+  top:-10px;
+  right:-10px;
+  width:22px;
+  height:22px;
+  border-radius:50%;
+  background:#8a3333;
+  color:white;
+  font-size:12px;
+  font-weight:800;
+  line-height:22px;
+  text-align:center;
+  box-shadow:0 1px 5px rgba(0,0,0,.5);
+}
+
+.sketchLayer {
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  z-index:26000;
+}
+
+.sketchSvg {
+  position:absolute;
+  inset:0;
+  overflow:visible;
+}
+
+.sketchStroke {
+  fill:none;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+
+.sketchStroke.hiddenPlayer {
+  opacity:.42;
+  stroke-dasharray:10 8;
+}
+
+.sketchStroke.preview {
+  opacity:.68;
+}
+
+.canvas.sketchPencilMode {
+  cursor:crosshair;
+}
+
+.canvas.sketchEraserMode {
+  cursor:not-allowed;
+}
+
+.sketchTools {
+  display:grid;
+  grid-template-columns:1fr 1fr 1fr;
+  gap:6px;
+}
+
+.sketchTools button {
+  margin:0;
+}
+
+.elementTools {
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:6px;
+}
+
+.elementTools button {
+  margin:0;
 }
 
 .smartBrushSvg {
@@ -609,6 +784,15 @@ body.playMode .mapObject.selected {
   outline:none;
 }
 
+body.playMode .roomElement.selected {
+  outline:none;
+  filter:none;
+}
+
+body.playMode .roomElement.hiddenPlayer::after {
+  content:none;
+}
+
 
 /* MVP 0.3c: secondo schermo + area TV trascinabile */
 .viewportLayer {
@@ -701,6 +885,15 @@ body.playerWindow .mapObject.hiddenPlayer::after {
 }
 
 body.playerWindow .mapObject.hiddenPlayer::after {
+  content:none !important;
+}
+
+body.playerWindow .roomElement.selected {
+  outline:none;
+  filter:none;
+}
+
+body.playerWindow .roomElement.hiddenPlayer::after {
   content:none !important;
 }
 

@@ -4,23 +4,130 @@
 // Blocco: 10_ui.js
 // Interfaccia: albero mappe, layer, libreria asset, normalizzazione progetto, render generale, colonne laterali, modalità editor/gioco.
 
+const TREE_ELEMENT_GROUPS = [
+  { type:"room", label:"Stanze" },
+  { type:"corridor", label:"Corridoi" },
+  { type:"door", label:"Porte" },
+  { type:"stair", label:"Scale" },
+  { type:"pin", label:"Pin" },
+  { type:"token", label:"Token" },
+  { type:"tile", label:"Tile" },
+  { type:"sketchStroke", label:"Sketch" }
+];
+
 function buildTree() {
   const tree = document.getElementById("projectTree");
   tree.innerHTML = "";
-  tree.appendChild(node("▾ " + project.name));
-  tree.appendChild(node("▾ Mappe", "child"));
-  project.maps.forEach(m => {
-    const el = node("↳ " + m.name, "child" + (m.id === project.activeMapId ? " activeMap" : ""));
-    el.onclick = () => { project.activeMapId = m.id; selectedId = null; render(); };
-    tree.appendChild(el);
+  const map = activeMap();
+  const root = node("▾ Progetto: " + (project.name || "Senza nome"), "treeProject");
+  tree.appendChild(root);
+
+  const mapNode = node("▾ Mappa attiva: " + (map?.name || "Nessuna mappa"), "child treeMap activeMap");
+  mapNode.onclick = () => {
+    clearSelection();
+    renderObjects();
+    renderProperties();
+    buildTree();
+  };
+  tree.appendChild(mapNode);
+
+  if (!map) return;
+
+  const entries = treeSelectableEntries(map);
+  TREE_ELEMENT_GROUPS.forEach(group => {
+    const groupEntries = entries.filter(entry => entry.type === group.type);
+    const folder = node(`▾ ${group.label} (${groupEntries.length})`, "child treeFolder");
+    tree.appendChild(folder);
+
+    groupEntries.forEach(entry => {
+      const el = node("↳ " + entry.name, "child treeElement" + (entry.id === selectedId ? " selectedTreeNode" : ""));
+      el.title = `${entry.id} · ${entry.geometryKind}`;
+      el.onclick = e => {
+        e.stopPropagation();
+        setSingleSelection(entry.id);
+        renderObjects();
+        renderProperties();
+        buildTree();
+      };
+      tree.appendChild(el);
+    });
   });
-  ["Scene", "Asset", "Handout", "Token", "Collegamenti", "Versioni esportate"].forEach(t => tree.appendChild(node("• " + t, "child")));
 }
 function node(text, cls="") {
   const el = document.createElement("div");
   el.className = "node " + cls;
   el.textContent = text;
   return el;
+}
+
+function treeSelectableEntries(map = activeMap()) {
+  if (!map) return [];
+  const entries = [];
+
+  (map.elements || []).forEach(element => {
+    normalizeElementFields(element);
+    entries.push({
+      source:"element",
+      id:element.id,
+      type:element.type,
+      name:element.name || element.id,
+      geometryKind:element.geometry?.kind || "unknown",
+      element
+    });
+  });
+
+  (map.objects || []).forEach(obj => {
+    normalizeObjectElementFields(obj);
+    entries.push({
+      source:"object",
+      id:obj.id,
+      type:objectElementType(obj),
+      name:obj.name || obj.id,
+      geometryKind:"rect",
+      element:obj
+    });
+  });
+
+  return entries;
+}
+
+function normalizeElementFields(element) {
+  if (!element) return;
+  if (!element.name) element.name = element.id || "Elemento";
+  if (typeof element.notesMaster !== "string") element.notesMaster = element.note || "";
+  if (typeof element.notesPlayer !== "string") element.notesPlayer = "";
+  if (typeof element.visibleToPlayers !== "boolean") element.visibleToPlayers = true;
+  if (!("linkedMapId" in element)) element.linkedMapId = null;
+  if (!("layerId" in element)) element.layerId = "";
+}
+
+function normalizeObjectElementFields(obj) {
+  if (!obj) return;
+  if (!obj.name) obj.name = obj.id || "Oggetto";
+  if (typeof obj.notesMaster !== "string") obj.notesMaster = obj.note || "";
+  if (typeof obj.notesPlayer !== "string") obj.notesPlayer = "";
+  if (typeof obj.visibleToPlayers !== "boolean") obj.visibleToPlayers = obj.visiblePlayer !== false;
+  if (!("linkedMapId" in obj)) obj.linkedMapId = null;
+  if (!obj.layerId) obj.layerId = objectLayerId(obj);
+  obj.note = obj.notesMaster;
+  obj.visiblePlayer = obj.visibleToPlayers;
+  obj.layer = migrateLayer(obj.layerId || obj.layer, assetById(obj.assetId));
+  obj.layerId = obj.layer;
+}
+
+function objectElementType(obj) {
+  const asset = assetById(obj?.assetId);
+  if (!asset) return "tile";
+  if (asset.cat === "Porte") return "door";
+  if (asset.cat === "Scale e botole") return "stair";
+  if (asset.cat === "Token") return "token";
+  if (asset.cat === "Icone") return "pin";
+  if (asset.cat === "Muri") return "corridor";
+  return "tile";
+}
+
+function selectedTreeEntry() {
+  return treeSelectableEntries(activeMap()).find(entry => entry.id === selectedId) || null;
 }
 
 
@@ -105,6 +212,8 @@ function setLayerVisibleMaster(id) {
   l.visibleMaster = !l.visibleMaster;
   project.layers[id] = l;
   buildLayerControls();
+  renderSketchLayer();
+  renderGeometryElements();
   renderObjects();
   publishProject();
 }
@@ -114,6 +223,8 @@ function setLayerVisiblePlayer(id) {
   l.visiblePlayer = !l.visiblePlayer;
   project.layers[id] = l;
   buildLayerControls();
+  renderSketchLayer();
+  renderGeometryElements();
   renderObjects();
   publishProject();
 }
@@ -123,6 +234,8 @@ function toggleLayerLocked(id) {
   l.locked = !l.locked;
   project.layers[id] = l;
   buildLayerControls();
+  renderSketchLayer();
+  renderGeometryElements();
   renderObjects();
   publishProject();
 }
@@ -232,6 +345,7 @@ function normalizeProject() {
   project.customAssets = project.customAssets || [];
   project.ui = project.ui || { leftCollapsed:false, rightCollapsed:false, assetCollapsed:{} };
   project.ui.assetCollapsed = project.ui.assetCollapsed || {};
+  project.ui.rightCollapsed = false;
   project.playerFollowEditor = project.playerFollowEditor !== false;
   project.playerZoom = project.playerZoom || 100;
   ensureLayers();
@@ -241,22 +355,35 @@ function normalizeProject() {
   });
 
   project.maps.forEach(m => {
+    m.elements = m.elements || [];
+    m.treeNodes = m.treeNodes || [];
     m.squaresW = m.squaresW || Math.round(m.width / grid());
     m.squaresH = m.squaresH || Math.round(m.height / grid());
     m.viewportX = m.viewportX || 0;
     m.viewportY = m.viewportY || 0;
     m.views = m.views || [];
     m.groups = m.groups || {};
+    m.elements = Array.isArray(m.elements) ? m.elements : [];
+    if (m.id === "blank_dungeon" && !m.elements.length && !(m.objects || []).length) {
+      m.elements = createDemoElements();
+    }
+    m.elements.forEach(normalizeElement);
+    m.layers = Array.isArray(m.layers) ? m.layers : [];
+    ensureSketchMapLayer(m);
     ensureSmartLayers(m);
 
     (m.objects || []).forEach(obj => {
       const asset = assetById(obj.assetId);
       obj.layer = migrateLayer(obj.layer, asset);
+      obj.layerId = obj.layer;
       if (typeof obj.visibleMaster !== "boolean") obj.visibleMaster = true;
       if (typeof obj.visiblePlayer !== "boolean") obj.visiblePlayer = true;
+      normalizeObjectElementFields(obj);
       if (typeof obj.opacity !== "number") obj.opacity = 1;
       obj.z = layerBaseZ(obj.layer) + (obj.z || 0) % 100;
     });
+
+    (m.elements || []).forEach(normalizeElementFields);
 
     rebuildGroupMeta(m);
     if (!m.playerView) {
@@ -271,6 +398,8 @@ function render() {
   buildLayerControls();
   applyCanvasSettings();
   renderSmartLayers();
+  renderSketchLayer();
+  renderGeometryElements();
   renderObjects();
   renderProperties();
   updateMapInfo();
@@ -282,8 +411,9 @@ function render() {
 
 function applyColumnUI() {
   project.ui = project.ui || {};
+  project.ui.rightCollapsed = false;
   document.body.classList.toggle("leftCollapsed", !!project.ui.leftCollapsed);
-  document.body.classList.toggle("rightCollapsed", !!project.ui.rightCollapsed);
+  document.body.classList.remove("rightCollapsed");
 
   const l = document.getElementById("btnToggleLeft");
   const r = document.getElementById("btnToggleRight");
@@ -292,8 +422,9 @@ function applyColumnUI() {
     l.classList.toggle("active", project.ui.leftCollapsed);
   }
   if (r) {
-    r.textContent = project.ui.rightCollapsed ? "Mostra destra" : "Nascondi destra";
-    r.classList.toggle("active", project.ui.rightCollapsed);
+    r.textContent = "Destra fissa";
+    r.classList.remove("active");
+    r.disabled = true;
   }
 
   // Dopo il cambio colonne, aggiorno la cornice player seguendo le nuove dimensioni dell'editor.
@@ -309,7 +440,7 @@ function toggleLeftColumn() {
 
 function toggleRightColumn() {
   project.ui = project.ui || {};
-  project.ui.rightCollapsed = !project.ui.rightCollapsed;
+  project.ui.rightCollapsed = false;
   applyColumnUI();
   publishProject();
 }

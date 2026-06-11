@@ -86,11 +86,6 @@
   <main class="app">
     <aside class="sidebar left">
       <section>
-        <h2>Albero progetto</h2>
-        <div id="projectTree" class="tree"></div>
-      </section>
-
-      <section>
         <h2>Layer</h2>
         <p class="hint">M = master, P = giocatori, 🔒 = blocco editing.</p>
         <div id="layerControls" class="layerControls"></div>
@@ -165,6 +160,7 @@
             <div id="dropHint">Trascina qui gli asset</div>
             <div id="gridLayer" class="gridLayer"></div>
             <div id="smartLayer" class="smartLayer"></div>
+            <div id="sketchLayer" class="sketchLayer"></div>
             <div id="viewportLayer" class="viewportLayer"><span>MAX TV 4K</span><div id="viewportHandle" class="viewportHandle">trascina area TV</div></div>
             <div id="playerViewLayer" class="playerViewLayer"><span>VISTA PLAYER</span></div>
             <div id="brushPreview" class="brushPreview"><img id="brushPreviewImg" alt=""><div class="anchorMarker"><span></span></div><div class="anchorLabel">AGGANCIO</div></div>
@@ -174,6 +170,50 @@
     </section>
 
     <aside class="sidebar right">
+      <section>
+        <h2>Albero progetto</h2>
+        <div id="projectTree" class="tree"></div>
+      </section>
+
+      <section>
+        <h2>Stanze</h2>
+        <label>Forma stanza
+          <select id="roomShapeSelect">
+            <option value="rect">Rettangolo</option>
+            <option value="square">Quadrato</option>
+            <option value="circle">Cerchio</option>
+            <option value="pentagon">Pentagono</option>
+            <option value="hexagon">Esagono</option>
+          </select>
+        </label>
+        <div class="sketchTools">
+          <button id="btnRoomTool">Stanza</button>
+          <button id="btnRoomToolOff">Stop stanza</button>
+        </div>
+        <div id="roomToolStatus" class="hint">Stanza: spento</div>
+      </section>
+
+      <section>
+        <h2>Corridoi, porte e scale</h2>
+        <div class="elementTools">
+          <button id="btnCorridorTool">Corridoio</button>
+          <button id="btnDoorTool">Porta</button>
+          <button id="btnStairTool">Scala</button>
+          <button id="btnElementToolOff">Stop</button>
+        </div>
+        <div id="elementToolStatus" class="hint">Corridoi, porte e scale: spento</div>
+      </section>
+
+      <section>
+        <h2>Schizzo</h2>
+        <div class="sketchTools">
+          <button id="btnSketchPencil">Matita schizzo</button>
+          <button id="btnSketchEraser">Gomma</button>
+          <button id="btnSketchOff">Stop schizzo</button>
+        </div>
+        <div id="sketchStatus" class="hint">Schizzo: spento</div>
+      </section>
+
       <section>
         <h2>Pennelli Smart</h2>
         <label>Tipo pennello

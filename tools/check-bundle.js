@@ -7,10 +7,13 @@ const outputFile = path.join(root, "app.js");
 
 const blocks = [
   "00_config.js",
+  "05_geometry.js",
   "10_ui.js",
   "20_canvas_view.js",
   "30_objects_properties.js",
   "40_brush_assets.js",
+  "46_room_tools.js",
+  "47_sketch_layer.js",
   "50_storage_settings.js",
   "60_smart_walls.js",
   "90_main_init.js",
